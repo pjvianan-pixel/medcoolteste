@@ -24,6 +24,7 @@ medcoolteste/
 ### Prerequisites
 
 - Python 3.11+
+- PostgreSQL 15+
 
 ### Install dependencies
 
@@ -38,6 +39,31 @@ pip install -e ".[dev]"
 cp backend/.env.example backend/.env
 # Edit backend/.env with your local values
 ```
+
+### Run database migrations
+
+Make sure PostgreSQL is running and `DATABASE_URL` in `backend/.env` is correct, then:
+
+```bash
+cd backend
+# Apply all pending migrations
+alembic upgrade head
+
+# (Optional) Roll back the last migration
+alembic downgrade -1
+
+# (Optional) Check current migration state
+alembic current
+```
+
+> **Note:** `alembic` uses the `DATABASE_URL` from `backend/.env` (or the environment).
+> The `+asyncpg` driver suffix is stripped automatically so that migrations use the
+> synchronous `psycopg2` adapter. Install it with:
+> ```bash
+> pip install psycopg2-binary  # development only
+> # or
+> pip install psycopg2         # production
+> ```
 
 ### Run backend
 
