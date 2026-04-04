@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/medcoolteste"
     SECRET_KEY: str = _DEFAULT_SECRET_KEY
     DEBUG: bool = False
+    JWT_EXPIRES_MINUTES: int = 60
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
