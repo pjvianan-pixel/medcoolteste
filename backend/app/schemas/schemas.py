@@ -125,3 +125,24 @@ class ProfessionalSpecialtiesUpdate(BaseModel):
     """
 
     specialties: list[str]
+
+
+# ── Presence ─────────────────────────────────────────────────────────────────
+
+
+class PresenceResponse(BaseModel):
+    professional_user_id: uuid.UUID
+    is_online: bool
+    last_seen_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SpecialtyAvailabilityItem(BaseModel):
+    slug: str
+    name: str
+    online_count: int
+
+
+class SpecialtyAvailabilityResponse(BaseModel):
+    items: list[SpecialtyAvailabilityItem]
