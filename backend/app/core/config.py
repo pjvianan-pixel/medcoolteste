@@ -6,7 +6,7 @@ _DEFAULT_SECRET_KEY = "change-me-in-production"
 
 class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/medcoolteste"
+    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/medcoolteste"
     SECRET_KEY: str = _DEFAULT_SECRET_KEY
     DEBUG: bool = False
 
