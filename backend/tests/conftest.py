@@ -12,12 +12,10 @@ from app.db.base import Base  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session():
-    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+    engine = create_async_engine(os.environ["DATABASE_URL"], echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)

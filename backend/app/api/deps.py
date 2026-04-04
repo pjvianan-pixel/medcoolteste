@@ -1,5 +1,4 @@
 import uuid
-from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -45,9 +44,3 @@ def require_role(role: UserRole):
         return current_user
 
     return _checker
-
-
-# Re-export get_db so route modules only need to import from deps
-async def get_db_dep() -> AsyncGenerator[AsyncSession, None]:
-    async for session in get_db():
-        yield session
