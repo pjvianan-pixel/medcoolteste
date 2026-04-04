@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from sqlalchemy import Date, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -17,8 +18,8 @@ class PatientProfile(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    date_of_birth: Mapped[str] = mapped_column(Date, nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     cpf: Mapped[str] = mapped_column(String(14), unique=True, nullable=False)
-    phone: Mapped[str] = mapped_column(String(20), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="patient_profile")  # noqa: F821
