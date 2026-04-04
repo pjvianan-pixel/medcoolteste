@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = _DEFAULT_SECRET_KEY
     DEBUG: bool = False
     JWT_EXPIRES_MINUTES: int = 60
+    PRESENCE_TIMEOUT_SECONDS: int = 30
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

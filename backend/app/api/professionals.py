@@ -1,14 +1,19 @@
+import uuid
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_role
+from app.db.models.professional_presence import ProfessionalPresence
 from app.db.models.professional_profile import ProfessionalProfile
 from app.db.models.professional_specialty import ProfessionalSpecialty
 from app.db.models.specialty import Specialty
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.schemas.schemas import (
+    PresenceResponse,
     ProfessionalProfileResponse,
     ProfessionalProfileUpdate,
     ProfessionalSpecialtiesUpdate,
@@ -126,3 +131,60 @@ async def replace_professional_specialties(
         )
     await db.commit()
     return resolved
+
+
+async def _get_or_create_presence(
+    db: AsyncSession, user_id: uuid.UUID
+) -> ProfessionalPresence:
+    result = await db.execute(
+        select(ProfessionalPresence).where(
+            ProfessionalPresence.professional_user_id == user_id
+        )
+    )
+    presence = result.scalar_one_or_none()
+    if presence is None:
+        presence = ProfessionalPresence(professional_user_id=user_id)
+        db.add(presence)
+    return presence
+
+
+@router.post("/me/online", response_model=PresenceResponse, status_code=status.HTTP_200_OK)
+async def set_online(
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ProfessionalPresence:
+    """Mark the authenticated professional as online and update last_seen_at."""
+    presence = await _get_or_create_presence(db, current_user.id)
+    presence.is_online = True
+    presence.last_seen_at = datetime.now(tz=UTC)
+    await db.commit()
+    await db.refresh(presence)
+    return presence
+
+
+@router.post("/me/offline", response_model=PresenceResponse, status_code=status.HTTP_200_OK)
+async def set_offline(
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ProfessionalPresence:
+    """Mark the authenticated professional as offline."""
+    presence = await _get_or_create_presence(db, current_user.id)
+    presence.is_online = False
+    presence.last_seen_at = datetime.now(tz=UTC)
+    await db.commit()
+    await db.refresh(presence)
+    return presence
+
+
+@router.post("/me/heartbeat", response_model=PresenceResponse, status_code=status.HTTP_200_OK)
+async def heartbeat(
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ProfessionalPresence:
+    """Update last_seen_at to keep the professional marked as online."""
+    presence = await _get_or_create_presence(db, current_user.id)
+    presence.is_online = True
+    presence.last_seen_at = datetime.now(tz=UTC)
+    await db.commit()
+    await db.refresh(presence)
+    return presence
