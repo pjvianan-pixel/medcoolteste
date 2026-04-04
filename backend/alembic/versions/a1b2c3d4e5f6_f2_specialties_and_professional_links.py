@@ -49,6 +49,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
     )
+    op.create_index("ix_specialties_slug", "specialties", ["slug"])
 
     op.create_table(
         "professional_specialties",
@@ -85,4 +86,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop professional_specialties and specialties tables."""
     op.drop_table("professional_specialties")
+    op.drop_index("ix_specialties_slug", table_name="specialties")
     op.drop_table("specialties")
