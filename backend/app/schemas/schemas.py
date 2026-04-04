@@ -1,9 +1,11 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
+from app.db.models.consult_offer import ConsultOfferStatus
 from app.db.models.consult_quote import QuoteStatus
+from app.db.models.consult_request import ConsultRequestStatus
 from app.db.models.professional_profile import VerificationStatus
 from app.db.models.user import UserRole
 
@@ -186,6 +188,51 @@ class QuoteResponse(BaseModel):
     created_at: datetime
     expires_at: datetime
     status: QuoteStatus
+
+    model_config = {"from_attributes": True}
+
+
+# ── Consult Request ───────────────────────────────────────────────────────────
+
+
+class ConsultOfferResponse(BaseModel):
+    id: uuid.UUID
+    consult_request_id: uuid.UUID
+    professional_user_id: uuid.UUID
+    price_cents: int
+    status: ConsultOfferStatus
+    sent_at: datetime
+    responded_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class ConsultRequestCreate(BaseModel):
+    quote_id: uuid.UUID
+    complaint: str
+
+    @field_validator("complaint")
+    @classmethod
+    def complaint_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("complaint must not be empty")
+        if len(v) > 500:
+            raise ValueError("complaint must be at most 500 characters")
+        return v
+
+
+class ConsultRequestResponse(BaseModel):
+    id: uuid.UUID
+    patient_user_id: uuid.UUID
+    specialty_id: uuid.UUID
+    quote_id: uuid.UUID
+    complaint: str
+    status: ConsultRequestStatus
+    matched_professional_user_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+    offers: list[ConsultOfferResponse] = []
 
     model_config = {"from_attributes": True}
 

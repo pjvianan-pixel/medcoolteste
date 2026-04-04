@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     JWT_EXPIRES_MINUTES: int = 60
     PRESENCE_TIMEOUT_SECONDS: int = 30
+    MATCH_OFFER_BATCH_SIZE: int = 5
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

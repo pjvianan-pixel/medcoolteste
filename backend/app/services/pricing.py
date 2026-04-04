@@ -14,6 +14,22 @@ from app.db.models.professional_specialty import ProfessionalSpecialty
 from app.db.models.specialty_pricing import SpecialtyPricing
 
 
+async def get_demand_for_specialty(specialty_id: uuid.UUID, db: AsyncSession) -> int:
+    """Count active consult_requests (queued or offering) for a specialty."""
+    # Import here to avoid circular imports at module level
+    from app.db.models.consult_request import ConsultRequest, ConsultRequestStatus  # noqa: PLC0415
+
+    result = await db.execute(
+        select(func.count(ConsultRequest.id)).where(
+            ConsultRequest.specialty_id == specialty_id,
+            ConsultRequest.status.in_(
+                [ConsultRequestStatus.queued, ConsultRequestStatus.offering]
+            ),
+        )
+    )
+    return result.scalar() or 0
+
+
 @dataclass
 class PricingResult:
     suggested_price_cents: int
