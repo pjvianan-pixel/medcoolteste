@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, EmailStr
 
+from app.db.models.consult_quote import QuoteStatus
 from app.db.models.professional_profile import VerificationStatus
 from app.db.models.user import UserRole
 
@@ -146,3 +147,45 @@ class SpecialtyAvailabilityItem(BaseModel):
 
 class SpecialtyAvailabilityResponse(BaseModel):
     items: list[SpecialtyAvailabilityItem]
+
+
+# ── Specialty Pricing ─────────────────────────────────────────────────────────
+
+
+class SpecialtyPricingResponse(BaseModel):
+    id: uuid.UUID
+    specialty_id: uuid.UUID
+    base_price_cents: int
+    min_price_cents: int
+    max_price_cents: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SpecialtyPricingUpdate(BaseModel):
+    base_price_cents: int | None = None
+    min_price_cents: int | None = None
+    max_price_cents: int | None = None
+
+
+# ── Consult Quote ─────────────────────────────────────────────────────────────
+
+
+class QuoteRequest(BaseModel):
+    specialty_id: uuid.UUID
+
+
+class QuoteResponse(BaseModel):
+    id: uuid.UUID
+    patient_user_id: uuid.UUID
+    specialty_id: uuid.UUID
+    quoted_price_cents: int
+    currency: str
+    created_at: datetime
+    expires_at: datetime
+    status: QuoteStatus
+
+    model_config = {"from_attributes": True}
+
