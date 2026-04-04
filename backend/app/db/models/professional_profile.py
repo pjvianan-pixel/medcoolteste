@@ -33,5 +33,6 @@ class ProfessionalProfile(Base):
         nullable=False,
         default=VerificationStatus.pending,
     )
+    verification_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="professional_profile")  # noqa: F821
