@@ -4,9 +4,17 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import require_role
-from app.db.models.consult_offer import ConsultOffer, ConsultOfferStatus
+from app.db.models.consult_offer import (
+    ActorRole,
+    ConsultOffer,
+    ConsultOfferEvent,
+    ConsultOfferStatus,
+    CounterStatus,
+    EventType,
+)
 from app.db.models.consult_request import ConsultRequest, ConsultRequestStatus
 from app.db.models.professional_presence import ProfessionalPresence
 from app.db.models.professional_profile import ProfessionalProfile
@@ -16,6 +24,7 @@ from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.schemas.schemas import (
     ConsultOfferResponse,
+    CounterOfferRequest,
     PresenceResponse,
     ProfessionalProfileResponse,
     ProfessionalProfileUpdate,
@@ -203,7 +212,9 @@ async def list_pending_offers(
 ) -> list[ConsultOffer]:
     """List all pending offers for the authenticated professional."""
     result = await db.execute(
-        select(ConsultOffer).where(
+        select(ConsultOffer)
+        .options(selectinload(ConsultOffer.events))
+        .where(
             ConsultOffer.professional_user_id == current_user.id,
             ConsultOffer.status == ConsultOfferStatus.pending,
         )
@@ -266,8 +277,12 @@ async def accept_offer(
     )
 
     await db.commit()
-    await db.refresh(offer)
-    return offer
+    result = await db.execute(
+        select(ConsultOffer)
+        .options(selectinload(ConsultOffer.events))
+        .where(ConsultOffer.id == offer.id)
+    )
+    return result.scalar_one()
 
 
 @router.post(
@@ -299,5 +314,79 @@ async def reject_offer(
     offer.status = ConsultOfferStatus.rejected
     offer.responded_at = datetime.now(tz=UTC)
     await db.commit()
-    await db.refresh(offer)
-    return offer
+    result = await db.execute(
+        select(ConsultOffer)
+        .options(selectinload(ConsultOffer.events))
+        .where(ConsultOffer.id == offer.id)
+    )
+    return result.scalar_one()
+
+
+@router.post(
+    "/me/offers/{offer_id}/counter",
+    response_model=ConsultOfferResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def create_counter_offer(
+    offer_id: uuid.UUID,
+    body: CounterOfferRequest,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ConsultOffer:
+    """Send a counter offer to the patient.
+
+    - Offer must be pending.
+    - ConsultRequest must not yet be matched.
+    - Sets counter_status=pending and creates a counter_proposed event.
+    """
+    offer_result = await db.execute(
+        select(ConsultOffer)
+        .options(selectinload(ConsultOffer.events))
+        .where(
+            ConsultOffer.id == offer_id,
+            ConsultOffer.professional_user_id == current_user.id,
+        )
+    )
+    offer = offer_result.scalar_one_or_none()
+    if offer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found")
+
+    if offer.status != ConsultOfferStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Offer is not pending",
+        )
+
+    request_result = await db.execute(
+        select(ConsultRequest).where(ConsultRequest.id == offer.consult_request_id)
+    )
+    consult_request = request_result.scalar_one()
+    if consult_request.status == ConsultRequestStatus.matched:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Consult request is already matched",
+        )
+
+    now = datetime.now(tz=UTC)
+    offer.counter_status = CounterStatus.pending
+    offer.counter_price_cents = body.price_cents
+    offer.counter_proposed_at = now
+
+    event = ConsultOfferEvent(
+        id=uuid.uuid4(),
+        consult_offer_id=offer.id,
+        actor_role=ActorRole.professional,
+        event_type=EventType.counter_proposed,
+        price_cents=body.price_cents,
+        created_at=now,
+    )
+    db.add(event)
+
+    await db.commit()
+    result = await db.execute(
+        select(ConsultOffer)
+        .options(selectinload(ConsultOffer.events))
+        .where(ConsultOffer.id == offer.id)
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one()
