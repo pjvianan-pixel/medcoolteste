@@ -5,6 +5,7 @@ from app.api.auth import router as auth_router
 from app.api.patients import router as patients_router
 from app.api.professionals import router as professionals_router
 from app.api.routes import router
+from app.api.specialties import router as specialties_router
 
 app = FastAPI(
     title="Medcoolteste API",
@@ -17,3 +18,4 @@ app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(professionals_router)
 app.include_router(admin_router)
+app.include_router(specialties_router)
