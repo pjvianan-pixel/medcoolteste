@@ -2,10 +2,12 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_role
+from app.db.models.consult_offer import ConsultOffer, ConsultOfferStatus
+from app.db.models.consult_request import ConsultRequest, ConsultRequestStatus
 from app.db.models.professional_presence import ProfessionalPresence
 from app.db.models.professional_profile import ProfessionalProfile
 from app.db.models.professional_specialty import ProfessionalSpecialty
@@ -13,6 +15,7 @@ from app.db.models.specialty import Specialty
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.schemas.schemas import (
+    ConsultOfferResponse,
     PresenceResponse,
     ProfessionalProfileResponse,
     ProfessionalProfileUpdate,
@@ -188,3 +191,113 @@ async def heartbeat(
     await db.commit()
     await db.refresh(presence)
     return presence
+
+
+# ── Offers ────────────────────────────────────────────────────────────────────
+
+
+@router.get("/me/offers", response_model=list[ConsultOfferResponse])
+async def list_pending_offers(
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> list[ConsultOffer]:
+    """List all pending offers for the authenticated professional."""
+    result = await db.execute(
+        select(ConsultOffer).where(
+            ConsultOffer.professional_user_id == current_user.id,
+            ConsultOffer.status == ConsultOfferStatus.pending,
+        )
+    )
+    return list(result.scalars().all())
+
+
+@router.post(
+    "/me/offers/{offer_id}/accept",
+    response_model=ConsultOfferResponse,
+)
+async def accept_offer(
+    offer_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ConsultOffer:
+    """Accept a pending offer.
+
+    - Marks the offer as accepted.
+    - Updates the consult_request to matched and sets matched_professional_user_id.
+    - Expires all other pending offers for the same consult_request.
+    """
+    offer_result = await db.execute(
+        select(ConsultOffer).where(
+            ConsultOffer.id == offer_id,
+            ConsultOffer.professional_user_id == current_user.id,
+        )
+    )
+    offer = offer_result.scalar_one_or_none()
+    if offer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found")
+
+    if offer.status != ConsultOfferStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Offer is not pending",
+        )
+
+    now = datetime.now(tz=UTC)
+    offer.status = ConsultOfferStatus.accepted
+    offer.responded_at = now
+
+    # Update the consult_request
+    request_result = await db.execute(
+        select(ConsultRequest).where(ConsultRequest.id == offer.consult_request_id)
+    )
+    consult_request = request_result.scalar_one()
+    consult_request.status = ConsultRequestStatus.matched
+    consult_request.matched_professional_user_id = current_user.id
+
+    # Expire other pending offers for the same request
+    await db.execute(
+        update(ConsultOffer)
+        .where(
+            ConsultOffer.consult_request_id == offer.consult_request_id,
+            ConsultOffer.id != offer_id,
+            ConsultOffer.status == ConsultOfferStatus.pending,
+        )
+        .values(status=ConsultOfferStatus.expired, responded_at=now)
+    )
+
+    await db.commit()
+    await db.refresh(offer)
+    return offer
+
+
+@router.post(
+    "/me/offers/{offer_id}/reject",
+    response_model=ConsultOfferResponse,
+)
+async def reject_offer(
+    offer_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ConsultOffer:
+    """Reject a pending offer."""
+    offer_result = await db.execute(
+        select(ConsultOffer).where(
+            ConsultOffer.id == offer_id,
+            ConsultOffer.professional_user_id == current_user.id,
+        )
+    )
+    offer = offer_result.scalar_one_or_none()
+    if offer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found")
+
+    if offer.status != ConsultOfferStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Offer is not pending",
+        )
+
+    offer.status = ConsultOfferStatus.rejected
+    offer.responded_at = datetime.now(tz=UTC)
+    await db.commit()
+    await db.refresh(offer)
+    return offer

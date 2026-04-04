@@ -1,4 +1,6 @@
+from app.db.models.consult_offer import ConsultOffer
 from app.db.models.consult_quote import ConsultQuote
+from app.db.models.consult_request import ConsultRequest
 from app.db.models.patient_profile import PatientProfile
 from app.db.models.professional_presence import ProfessionalPresence
 from app.db.models.professional_profile import ProfessionalProfile
@@ -16,4 +18,6 @@ __all__ = [
     "ProfessionalSpecialty",
     "SpecialtyPricing",
     "ConsultQuote",
+    "ConsultRequest",
+    "ConsultOffer",
 ]
