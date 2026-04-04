@@ -6,11 +6,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
 from app.db.models.professional_presence import ProfessionalPresence
-from app.db.models.professional_specialty import ProfessionalSpecialty
 from app.db.models.specialty import Specialty
-from app.db.models.user import User, UserRole
+from app.db.models.user import User
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 

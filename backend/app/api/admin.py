@@ -7,12 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_admin
 from app.db.models.professional_profile import ProfessionalProfile, VerificationStatus
 from app.db.models.specialty import Specialty
+from app.db.models.specialty_pricing import SpecialtyPricing
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.schemas.schemas import (
     AdminProfessionalResponse,
     RejectRequest,
     SpecialtyCreate,
+    SpecialtyPricingResponse,
+    SpecialtyPricingUpdate,
     SpecialtyResponse,
     SpecialtyUpdate,
 )
@@ -124,4 +127,80 @@ async def update_specialty(
         setattr(specialty, field, value)
     await db.commit()
     await db.refresh(specialty)
+    return specialty
+
+
+# ── Specialty Pricing (admin) ─────────────────────────────────────────────────
+
+
+@router.get("/specialties/{specialty_id}/pricing", response_model=SpecialtyPricingResponse)
+async def get_specialty_pricing(
+    specialty_id: uuid.UUID,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SpecialtyPricing:
+    """Return pricing configuration for a specialty (admin only)."""
+    await _get_specialty_or_404(db, specialty_id)
+    result = await db.execute(
+        select(SpecialtyPricing).where(SpecialtyPricing.specialty_id == specialty_id)
+    )
+    pricing = result.scalar_one_or_none()
+    if pricing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pricing not configured for this specialty",
+        )
+    return pricing
+
+
+@router.put("/specialties/{specialty_id}/pricing", response_model=SpecialtyPricingResponse)
+async def upsert_specialty_pricing(
+    specialty_id: uuid.UUID,
+    body: SpecialtyPricingUpdate,
+    _admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SpecialtyPricing:
+    """Create or update pricing for a specialty (admin only).
+
+    All three fields (base, min, max) are required when creating a new record.
+    When updating an existing record, only the provided fields are changed.
+    """
+    await _get_specialty_or_404(db, specialty_id)
+    result = await db.execute(
+        select(SpecialtyPricing).where(SpecialtyPricing.specialty_id == specialty_id)
+    )
+    pricing = result.scalar_one_or_none()
+
+    if pricing is None:
+        # Creating new: all fields required
+        update_data = body.model_dump(exclude_unset=True)
+        missing = [
+            f for f in ("base_price_cents", "min_price_cents", "max_price_cents")
+            if f not in update_data
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Fields required for new pricing record: {missing}",
+            )
+        pricing = SpecialtyPricing(
+            id=uuid.uuid4(),
+            specialty_id=specialty_id,
+            **update_data,
+        )
+        db.add(pricing)
+    else:
+        for field, value in body.model_dump(exclude_unset=True).items():
+            setattr(pricing, field, value)
+
+    await db.commit()
+    await db.refresh(pricing)
+    return pricing
+
+
+async def _get_specialty_or_404(db: AsyncSession, specialty_id: uuid.UUID) -> Specialty:
+    result = await db.execute(select(Specialty).where(Specialty.id == specialty_id))
+    specialty = result.scalar_one_or_none()
+    if specialty is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Specialty not found")
     return specialty
