@@ -3,8 +3,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, EmailStr
 
+from app.db.models.professional_profile import VerificationStatus
 from app.db.models.user import UserRole
-
 
 # ── Auth ────────────────────────────────────────────────────────────────────
 
@@ -74,3 +74,23 @@ class ProfessionalProfileUpdate(BaseModel):
     specialty: str | None = None
     bio: str | None = None
     is_available: bool | None = None
+
+
+# ── Admin ────────────────────────────────────────────────────────────────────
+
+class AdminProfessionalResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    full_name: str
+    crm: str
+    specialty: str
+    bio: str | None
+    is_available: bool
+    status_verificacao: VerificationStatus
+    verification_reason: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class RejectRequest(BaseModel):
+    reason: str

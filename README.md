@@ -83,6 +83,19 @@ cd backend
 pytest
 ```
 
+### Create the first admin user
+
+After applying migrations, use the CLI script to create an admin:
+
+```bash
+cd backend
+python scripts/create_admin.py --email admin@example.com --password yourpassword
+```
+
+The script reads `DATABASE_URL` from `backend/.env` (or the environment) and
+creates a user with role `admin`. Run `alembic upgrade head` first to ensure
+the `admin` value exists in the `user_role` enum.
+
 ### Lint
 
 ```bash

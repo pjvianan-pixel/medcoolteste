@@ -12,6 +12,7 @@ from app.db.base import Base
 class UserRole(enum.StrEnum):
     patient = "patient"
     professional = "professional"
+    admin = "admin"
 
 
 class User(Base):

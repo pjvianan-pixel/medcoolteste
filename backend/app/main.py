@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.patients import router as patients_router
 from app.api.professionals import router as professionals_router
@@ -15,3 +16,4 @@ app.include_router(router)
 app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(professionals_router)
+app.include_router(admin_router)
