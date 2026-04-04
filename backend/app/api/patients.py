@@ -152,7 +152,11 @@ async def create_consult_request(
             detail="Quote is not active",
         )
 
-    if quote.expires_at.replace(tzinfo=UTC) < datetime.now(tz=UTC) if quote.expires_at.tzinfo is None else quote.expires_at < datetime.now(tz=UTC):
+    # Ensure timezone-aware comparison (SQLite returns naive datetimes)
+    expires_at = quote.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at < datetime.now(tz=UTC):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Quote has expired",
