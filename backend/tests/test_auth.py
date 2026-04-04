@@ -1,7 +1,6 @@
 import pytest
 from httpx import AsyncClient
 
-
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 async def _register(client: AsyncClient, email: str, password: str, role: str) -> dict:

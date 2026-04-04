@@ -1,12 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_role
 from app.db.models.professional_profile import ProfessionalProfile
+from app.db.models.professional_specialty import ProfessionalSpecialty
+from app.db.models.specialty import Specialty
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
-from app.schemas.schemas import ProfessionalProfileResponse, ProfessionalProfileUpdate
+from app.schemas.schemas import (
+    ProfessionalProfileResponse,
+    ProfessionalProfileUpdate,
+    ProfessionalSpecialtiesUpdate,
+    SpecialtyResponse,
+)
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
 
@@ -49,3 +56,73 @@ async def patch_professional_me(
     await db.commit()
     await db.refresh(profile)
     return profile
+
+
+@router.get("/me/specialties", response_model=list[SpecialtyResponse])
+async def get_professional_specialties(
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> list[Specialty]:
+    """List the specialties associated with the authenticated professional."""
+    result = await db.execute(
+        select(Specialty)
+        .join(
+            ProfessionalSpecialty,
+            ProfessionalSpecialty.specialty_id == Specialty.id,
+        )
+        .where(ProfessionalSpecialty.professional_user_id == current_user.id)
+    )
+    return list(result.scalars().all())
+
+
+@router.put("/me/specialties", response_model=list[SpecialtyResponse])
+async def replace_professional_specialties(
+    body: ProfessionalSpecialtiesUpdate,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> list[Specialty]:
+    """Replace the professional's specialty list with the provided one.
+
+    Each element of ``body.specialties`` may be either a UUID string or a slug.
+    Returns 400 if any identifier does not match an existing specialty.
+    """
+    resolved: list[Specialty] = []
+    for identifier in body.specialties:
+        specialty: Specialty | None = None
+        # Try UUID first
+        try:
+            import uuid as _uuid
+
+            spec_uuid = _uuid.UUID(identifier)
+            res = await db.execute(select(Specialty).where(Specialty.id == spec_uuid))
+            specialty = res.scalar_one_or_none()
+        except ValueError:
+            pass
+
+        # Fallback to slug
+        if specialty is None:
+            res = await db.execute(select(Specialty).where(Specialty.slug == identifier))
+            specialty = res.scalar_one_or_none()
+
+        if specialty is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Specialty not found: {identifier!r}",
+            )
+        resolved.append(specialty)
+
+    # Replace all existing links
+    await db.execute(
+        delete(ProfessionalSpecialty).where(
+            ProfessionalSpecialty.professional_user_id == current_user.id
+        )
+    )
+    for specialty in resolved:
+        db.add(
+            ProfessionalSpecialty(
+                professional_user_id=current_user.id,
+                specialty_id=specialty.id,
+            )
+        )
+    await db.commit()
+    return resolved

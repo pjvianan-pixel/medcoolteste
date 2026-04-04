@@ -94,3 +94,34 @@ class AdminProfessionalResponse(BaseModel):
 
 class RejectRequest(BaseModel):
     reason: str
+
+
+# ── Specialty ────────────────────────────────────────────────────────────────
+
+class SpecialtyResponse(BaseModel):
+    id: uuid.UUID
+    slug: str
+    name: str
+    active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class SpecialtyCreate(BaseModel):
+    slug: str
+    name: str
+    active: bool = True
+
+
+class SpecialtyUpdate(BaseModel):
+    name: str | None = None
+    active: bool | None = None
+
+
+class ProfessionalSpecialtiesUpdate(BaseModel):
+    """Body for PUT /professionals/me/specialties.
+
+    Accepts a list of specialty UUIDs or slugs.
+    """
+
+    specialties: list[str]
