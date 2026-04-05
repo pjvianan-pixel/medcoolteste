@@ -103,7 +103,7 @@ class PaymentEvent(Base):
         SAEnum(PaymentEventType, name="payment_event_type"),
         nullable=False,
     )
-    raw_payload: Mapped[dict | None] = mapped_column(Text, nullable=True)
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

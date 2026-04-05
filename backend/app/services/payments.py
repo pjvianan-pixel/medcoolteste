@@ -31,6 +31,11 @@ async def create_payment_for_consult_request(
     Returns:
         The newly created Payment (not yet committed).
     """
+    if consult_request.quote is None:
+        raise ValueError(
+            f"ConsultRequest {consult_request.id} has no loaded quote relationship. "
+            "Ensure the quote is eagerly loaded before calling this function."
+        )
     amount_cents: int = consult_request.quote.quoted_price_cents
     platform_fee_cents: int = round(amount_cents * settings.PLATFORM_FEE_PERCENT / 100)
     professional_amount_cents: int = amount_cents - platform_fee_cents
