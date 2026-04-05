@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, EmailStr, field_validator
 
-from app.db.models.consult_offer import ConsultOfferStatus
+from app.db.models.consult_offer import ActorRole, ConsultOfferStatus, CounterStatus, EventType
 from app.db.models.consult_quote import QuoteStatus
 from app.db.models.consult_request import ConsultRequestStatus
 from app.db.models.professional_profile import VerificationStatus
@@ -195,6 +195,17 @@ class QuoteResponse(BaseModel):
 # ── Consult Request ───────────────────────────────────────────────────────────
 
 
+class ConsultOfferEventResponse(BaseModel):
+    id: uuid.UUID
+    consult_offer_id: uuid.UUID
+    actor_role: ActorRole
+    event_type: EventType
+    price_cents: int | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ConsultOfferResponse(BaseModel):
     id: uuid.UUID
     consult_request_id: uuid.UUID
@@ -203,8 +214,17 @@ class ConsultOfferResponse(BaseModel):
     status: ConsultOfferStatus
     sent_at: datetime
     responded_at: datetime | None
+    counter_status: CounterStatus
+    counter_price_cents: int | None
+    counter_proposed_at: datetime | None
+    counter_responded_at: datetime | None
+    events: list[ConsultOfferEventResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+class CounterOfferRequest(BaseModel):
+    price_cents: int
 
 
 class ConsultRequestCreate(BaseModel):

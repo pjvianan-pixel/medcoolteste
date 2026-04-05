@@ -18,6 +18,24 @@ class ConsultOfferStatus(enum.StrEnum):
     expired = "expired"
 
 
+class CounterStatus(enum.StrEnum):
+    none = "none"
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+
+
+class ActorRole(enum.StrEnum):
+    professional = "professional"
+    patient = "patient"
+
+
+class EventType(enum.StrEnum):
+    counter_proposed = "counter_proposed"
+    counter_accepted = "counter_accepted"
+    counter_rejected = "counter_rejected"
+
+
 class ConsultOffer(Base):
     __tablename__ = "consult_offers"
 
@@ -48,6 +66,19 @@ class ConsultOffer(Base):
     responded_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Counter offer fields
+    counter_status: Mapped[CounterStatus] = mapped_column(
+        SAEnum(CounterStatus, name="counter_status"),
+        nullable=False,
+        default=CounterStatus.none,
+    )
+    counter_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    counter_proposed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    counter_responded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -64,3 +95,34 @@ class ConsultOffer(Base):
     professional: Mapped["User"] = relationship(  # noqa: F821
         "User", foreign_keys=[professional_user_id]
     )
+    events: Mapped[list["ConsultOfferEvent"]] = relationship(
+        "ConsultOfferEvent", back_populates="offer", lazy="select"
+    )
+
+
+class ConsultOfferEvent(Base):
+    __tablename__ = "consult_offer_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    consult_offer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("consult_offers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    actor_role: Mapped[ActorRole] = mapped_column(
+        SAEnum(ActorRole, name="actor_role"),
+        nullable=False,
+    )
+    event_type: Mapped[EventType] = mapped_column(
+        SAEnum(EventType, name="event_type"),
+        nullable=False,
+    )
+    price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    offer: Mapped["ConsultOffer"] = relationship("ConsultOffer", back_populates="events")
