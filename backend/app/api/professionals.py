@@ -16,6 +16,7 @@ from app.db.models.consult_offer import (
     EventType,
 )
 from app.db.models.consult_request import ConsultRequest, ConsultRequestStatus
+from app.db.models.payment import Payment
 from app.db.models.professional_presence import ProfessionalPresence
 from app.db.models.professional_profile import ProfessionalProfile
 from app.db.models.professional_specialty import ProfessionalSpecialty
@@ -25,6 +26,7 @@ from app.db.session import get_db
 from app.schemas.schemas import (
     ConsultOfferResponse,
     CounterOfferRequest,
+    PaymentResponse,
     PresenceResponse,
     ProfessionalProfileResponse,
     ProfessionalProfileUpdate,
@@ -390,3 +392,31 @@ async def create_counter_offer(
         .execution_options(populate_existing=True)
     )
     return result.scalar_one()
+
+
+# ── Payments ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/me/payments", response_model=list[PaymentResponse])
+async def list_professional_payments(
+    page: int = 1,
+    limit: int = 20,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> list[Payment]:
+    """List payments for consult requests matched to the authenticated professional.
+
+    Supports simple page/limit pagination.
+    """
+    if page < 1:
+        page = 1
+    offset = (page - 1) * limit
+
+    result = await db.execute(
+        select(Payment)
+        .where(Payment.professional_user_id == current_user.id)
+        .order_by(Payment.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(result.scalars().all())

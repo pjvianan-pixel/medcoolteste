@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     JWT_EXPIRES_MINUTES: int = 60
     PRESENCE_TIMEOUT_SECONDS: int = 30
     MATCH_OFFER_BATCH_SIZE: int = 5
+    PLATFORM_FEE_PERCENT: int = 20
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

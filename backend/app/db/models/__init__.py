@@ -2,6 +2,7 @@ from app.db.models.consult_offer import ConsultOffer, ConsultOfferEvent
 from app.db.models.consult_quote import ConsultQuote
 from app.db.models.consult_request import ConsultRequest
 from app.db.models.patient_profile import PatientProfile
+from app.db.models.payment import Payment, PaymentEvent
 from app.db.models.professional_presence import ProfessionalPresence
 from app.db.models.professional_profile import ProfessionalProfile
 from app.db.models.professional_specialty import ProfessionalSpecialty
@@ -21,4 +22,6 @@ __all__ = [
     "ConsultRequest",
     "ConsultOffer",
     "ConsultOfferEvent",
+    "Payment",
+    "PaymentEvent",
 ]

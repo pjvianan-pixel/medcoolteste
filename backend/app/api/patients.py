@@ -18,6 +18,7 @@ from app.db.models.consult_offer import (
 from app.db.models.consult_quote import ConsultQuote, QuoteStatus
 from app.db.models.consult_request import ConsultRequest, ConsultRequestStatus
 from app.db.models.patient_profile import PatientProfile
+from app.db.models.payment import Payment, PaymentStatus
 from app.db.models.specialty import Specialty
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
@@ -27,10 +28,12 @@ from app.schemas.schemas import (
     ConsultRequestResponse,
     PatientProfileResponse,
     PatientProfileUpdate,
+    PaymentResponse,
     QuoteRequest,
     QuoteResponse,
 )
 from app.services.matching import run_matching
+from app.services.payments import create_payment_for_consult_request
 from app.services.pricing import calculate_price, get_demand_for_specialty, quote_expires_at
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -447,3 +450,84 @@ async def reject_counter_offer(
         .execution_options(populate_existing=True)
     )
     return result.scalar_one()
+
+
+# ── Payments ──────────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/me/consult-requests/{request_id}/payments",
+    response_model=PaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_payment(
+    request_id: uuid.UUID,
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> Payment:
+    """Create a payment for a matched consult request (patient only).
+
+    - The consult_request must belong to the authenticated patient.
+    - The consult_request must be in 'matched' status.
+    - No active payment (pending/processing/paid) must already exist for it.
+    """
+    result = await db.execute(
+        select(ConsultRequest)
+        .options(selectinload(ConsultRequest.quote))
+        .where(
+            ConsultRequest.id == request_id,
+            ConsultRequest.patient_user_id == current_user.id,
+        )
+    )
+    consult_request = result.scalar_one_or_none()
+    if consult_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Consult request not found"
+        )
+
+    if consult_request.status != ConsultRequestStatus.matched:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Consult request is not matched yet",
+        )
+
+    # Check for existing active payment
+    existing_result = await db.execute(
+        select(Payment).where(
+            Payment.consult_request_id == request_id,
+            Payment.status.in_(
+                [PaymentStatus.pending, PaymentStatus.processing, PaymentStatus.paid]
+            ),
+        )
+    )
+    if existing_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="An active payment already exists for this consult request",
+        )
+
+    payment = await create_payment_for_consult_request(consult_request, db)
+    await db.commit()
+    await db.refresh(payment)
+    return payment
+
+
+@router.get("/me/payments/{payment_id}", response_model=PaymentResponse)
+async def get_payment(
+    payment_id: uuid.UUID,
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> Payment:
+    """Get details of a specific payment belonging to the authenticated patient."""
+    result = await db.execute(
+        select(Payment).where(
+            Payment.id == payment_id,
+            Payment.patient_user_id == current_user.id,
+        )
+    )
+    payment = result.scalar_one_or_none()
+    if payment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found"
+        )
+    return payment
