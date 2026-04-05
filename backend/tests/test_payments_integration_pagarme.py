@@ -25,16 +25,16 @@ import hmac
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.security import hash_password
-from app.db.models.consult_offer import ConsultOffer, ConsultOfferStatus
 from app.db.models.consult_quote import ConsultQuote, QuoteStatus
 from app.db.models.consult_request import ConsultRequest, ConsultRequestStatus
 from app.db.models.patient_profile import PatientProfile
@@ -47,7 +47,6 @@ from app.db.models.specialty_pricing import SpecialtyPricing
 from app.db.models.user import User, UserRole
 from app.integrations.pagarme_client import (
     PaymentGatewayChargeResponse,
-    PaymentGatewayWebhookEvent,
     PagarmeClient,
 )
 from app.services.payments import create_payment_for_consult_request
@@ -225,7 +224,6 @@ async def test_create_payment_calls_gateway_with_split_amounts(
     fake_client = _make_fake_client(gateway_payment_id="or_test001")
 
     # Eagerly reload quote on cr for the service function
-    from sqlalchemy.orm import selectinload  # noqa: PLC0415
     result = await db_session.execute(
         select(ConsultRequest)
         .options(selectinload(ConsultRequest.quote))
@@ -274,7 +272,6 @@ async def test_gateway_response_persisted_on_payment(db_session: AsyncSession) -
         checkout_url="https://pix.example.com/qr_abc999",
     )
 
-    from sqlalchemy.orm import selectinload  # noqa: PLC0415
     result = await db_session.execute(
         select(ConsultRequest)
         .options(selectinload(ConsultRequest.quote))
@@ -315,7 +312,6 @@ async def test_gateway_failure_leaves_provider_pending(db_session: AsyncSession)
     failing_client = MagicMock()
     failing_client.create_charge = AsyncMock(side_effect=RuntimeError("network error"))
 
-    from sqlalchemy.orm import selectinload  # noqa: PLC0415
     result = await db_session.execute(
         select(ConsultRequest)
         .options(selectinload(ConsultRequest.quote))
@@ -342,8 +338,6 @@ async def test_create_payment_endpoint_returns_checkout_url(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     """POST /payments returns checkout_url and provider_payment_id from gateway."""
-    from unittest.mock import patch  # noqa: PLC0415
-
     spec = await _seed_specialty(db_session, "pagarme-api")
     await _seed_pricing(db_session, spec.id)
     token, patient_id = await _register_and_login(client, "pat@pgapi.com", "patient")
@@ -524,8 +518,6 @@ async def test_webhook_invalid_signature_returns_400(
     client: AsyncClient,
 ) -> None:
     """Webhook with wrong signature returns 400 when PAGARME_WEBHOOK_SECRET is set."""
-    from unittest.mock import patch  # noqa: PLC0415
-
     payload = {
         "id": "hook_badsig",
         "type": "order.paid",
