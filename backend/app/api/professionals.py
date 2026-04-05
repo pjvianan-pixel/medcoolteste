@@ -579,6 +579,11 @@ async def get_financial_transactions(
     - ``financial_status``: filter by ``pending``, ``paid``, ``refund_pending``,
       ``refunded``, or ``canceled``.
     """
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="from_date must not be after to_date",
+        )
     items, total = await list_professional_transactions(
         current_user.id,
         db,

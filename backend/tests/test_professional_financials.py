@@ -484,6 +484,26 @@ async def test_api_transactions_unauthorized(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_api_transactions_invalid_date_range(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Transactions endpoint returns 422 when from_date is after to_date."""
+    spec = await _seed_specialty(db_session, "nefrologiaX")
+    prof = await _seed_professional(db_session, "prof.api.daterange@test.com", spec.id)
+    token_resp = await client.post(
+        "/auth/login", json={"email": "prof.api.daterange@test.com", "password": "pw"}
+    )
+    token = token_resp.json()["access_token"]
+
+    resp = await client.get(
+        "/professionals/me/financial/transactions"
+        "?from_date=2025-01-10T00:00:00Z&to_date=2025-01-01T00:00:00Z",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "from_date" in resp.json()["detail"]
+
+@pytest.mark.asyncio
 async def test_api_summary_empty(client: AsyncClient, db_session: AsyncSession) -> None:
     """Summary endpoint returns all-zero totals for a professional with no payments."""
     spec = await _seed_specialty(db_session, "anestesiologia")
@@ -491,10 +511,10 @@ async def test_api_summary_empty(client: AsyncClient, db_session: AsyncSession) 
     token, _ = await _register_and_login(client, "prof.api.empty@test.com", "professional")
 
     # Need to manually create profile for the registered professional
-    from sqlalchemy import select as sa_select
-    from app.db.models.user import User as UserModel
+    from sqlalchemy import select
+    from app.db.models.user import User
     result = await db_session.execute(
-        sa_select(UserModel).where(UserModel.email == "prof.api.empty@test.com")
+        select(User).where(User.email == "prof.api.empty@test.com")
     )
     user = result.scalar_one()
     db_session.add(
