@@ -25,6 +25,7 @@ from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.schemas.schemas import (
     ConsultOfferResponse,
+    ConsultRequestResponse,
     CounterOfferRequest,
     PaymentResponse,
     PresenceResponse,
@@ -33,6 +34,7 @@ from app.schemas.schemas import (
     ProfessionalSpecialtiesUpdate,
     SpecialtyResponse,
 )
+from app.services.cancellation import cancel_by_professional, mark_no_show
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
 
@@ -420,3 +422,107 @@ async def list_professional_payments(
         .limit(limit)
     )
     return list(result.scalars().all())
+
+
+# ── Cancellation & No-Show ────────────────────────────────────────────────────
+
+
+@router.post(
+    "/me/consult-requests/{request_id}/cancel",
+    response_model=ConsultRequestResponse,
+)
+async def cancel_consult_request_by_professional(
+    request_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ConsultRequest:
+    """Cancel a matched consult request (professional only).
+
+    Always triggers a full refund to the patient.
+    """
+    result = await db.execute(
+        select(ConsultRequest)
+        .where(
+            ConsultRequest.id == request_id,
+            ConsultRequest.matched_professional_user_id == current_user.id,
+        )
+    )
+    consult_request = result.scalar_one_or_none()
+    if consult_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Consult request not found"
+        )
+
+    if consult_request.status != ConsultRequestStatus.matched:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only matched consult requests can be cancelled by the professional",
+        )
+
+    try:
+        await cancel_by_professional(consult_request, db)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    await db.commit()
+    reload_result = await db.execute(
+        select(ConsultRequest)
+        .options(selectinload(ConsultRequest.offers).selectinload(ConsultOffer.events))
+        .where(ConsultRequest.id == consult_request.id)
+        .execution_options(populate_existing=True)
+    )
+    return reload_result.scalar_one()
+
+
+@router.post(
+    "/me/consult-requests/{request_id}/no-show",
+    response_model=ConsultRequestResponse,
+)
+async def mark_patient_no_show(
+    request_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ConsultRequest:
+    """Mark a consult request as patient no-show (professional only).
+
+    Can only be called after ``scheduled_at + grace_minutes`` has elapsed.
+    Applies the platform no-show refund policy.
+    """
+    result = await db.execute(
+        select(ConsultRequest)
+        .where(
+            ConsultRequest.id == request_id,
+            ConsultRequest.matched_professional_user_id == current_user.id,
+        )
+    )
+    consult_request = result.scalar_one_or_none()
+    if consult_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Consult request not found"
+        )
+
+    if consult_request.status != ConsultRequestStatus.matched:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only matched consult requests can be marked as no-show",
+        )
+
+    try:
+        await mark_no_show(consult_request, db)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    await db.commit()
+    reload_result = await db.execute(
+        select(ConsultRequest)
+        .options(selectinload(ConsultRequest.offers).selectinload(ConsultOffer.events))
+        .where(ConsultRequest.id == consult_request.id)
+        .execution_options(populate_existing=True)
+    )
+    return reload_result.scalar_one()

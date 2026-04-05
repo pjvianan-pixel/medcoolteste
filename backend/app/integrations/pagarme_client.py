@@ -44,6 +44,16 @@ class PaymentGatewayChargeResponse:
     gateway_payment_id: str
     status: str
     checkout_url: str | None = None
+    gateway_charge_id: str | None = None
+
+
+@dataclass
+class PaymentGatewayRefundResponse:
+    """Response returned by ``PaymentGatewayClient.create_refund``."""
+
+    gateway_refund_id: str
+    status: str
+    amount_cents: int
 
 
 @dataclass
@@ -62,7 +72,8 @@ class PaymentGatewayWebhookEvent:
 class PaymentGatewayClient(ABC):
     """Abstract payment gateway client.
 
-    Subclasses must implement ``create_charge`` and ``parse_webhook``.
+    Subclasses must implement ``create_charge``, ``parse_webhook``, and
+    ``create_refund``.
     """
 
     @abstractmethod
@@ -104,6 +115,28 @@ class PaymentGatewayClient(ABC):
 
         Raises:
             ValueError: If the signature is invalid.
+        """
+
+    @abstractmethod
+    async def create_refund(
+        self,
+        payment: Payment,
+        amount: int | None = None,
+    ) -> PaymentGatewayRefundResponse:
+        """Issue a refund for a previously captured charge.
+
+        Args:
+            payment: The domain ``Payment`` with a valid ``provider_charge_id``.
+            amount: Amount in cents to refund.  If ``None`` the full charge
+                    amount is refunded.
+
+        Returns:
+            A ``PaymentGatewayRefundResponse`` with the gateway refund ID.
+
+        Raises:
+            GatewayNotConfiguredError: If ``PAGARME_API_KEY`` is not set.
+            ValueError: If ``payment.provider_charge_id`` is missing.
+            httpx.HTTPStatusError: On non-2xx responses from the gateway.
         """
 
 
@@ -192,6 +225,7 @@ class PagarmeClient(PaymentGatewayClient):
 
         data: dict = response.json()
         checkout_url = self._extract_checkout_url(data)
+        gateway_charge_id = self._extract_charge_id(data)
 
         logger.info(
             "Pagar.me order created",
@@ -201,6 +235,7 @@ class PagarmeClient(PaymentGatewayClient):
             gateway_payment_id=data["id"],
             status=data.get("status", "pending"),
             checkout_url=checkout_url,
+            gateway_charge_id=gateway_charge_id,
         )
 
     def parse_webhook(
@@ -306,6 +341,82 @@ class PagarmeClient(PaymentGatewayClient):
             return None
         last_transaction: dict = charges[0].get("last_transaction", {})
         return last_transaction.get("qr_code_url") or last_transaction.get("url")
+
+    def _extract_charge_id(self, data: dict) -> str | None:
+        """Extract the first charge ID from a Pagar.me order response."""
+        charges: list = data.get("charges", [])
+        if not charges:
+            return None
+        return charges[0].get("id")
+
+    async def create_refund(
+        self,
+        payment: Payment,
+        amount: int | None = None,
+    ) -> PaymentGatewayRefundResponse:
+        """Issue a refund for a Pagar.me charge.
+
+        Calls ``POST /charges/{charge_id}/refund`` on the Pagar.me v5 API.
+
+        Args:
+            payment: Domain payment with a valid ``provider_charge_id``.
+            amount: Amount in cents to refund.  ``None`` refunds the full charge.
+
+        Returns:
+            ``PaymentGatewayRefundResponse`` with the refund ID and amount.
+
+        Raises:
+            GatewayNotConfiguredError: If ``PAGARME_API_KEY`` is not set.
+            ValueError: If ``payment.provider_charge_id`` is missing.
+            httpx.HTTPStatusError: On non-2xx responses from Pagar.me.
+        """
+        if not self._api_key:
+            raise GatewayNotConfiguredError(
+                "PAGARME_API_KEY is not configured. "
+                "Set it in your environment or .env file."
+            )
+
+        charge_id = payment.provider_charge_id
+        if not charge_id:
+            raise ValueError(
+                f"Payment {payment.id} has no provider_charge_id; cannot refund."
+            )
+
+        body: dict = {}
+        if amount is not None:
+            body["amount"] = amount
+
+        async with httpx.AsyncClient(
+            base_url=self._base_url,
+            auth=(self._api_key, ""),
+            timeout=30.0,
+        ) as client:
+            response = await client.post(f"/charges/{charge_id}/refund", json=body)
+            response.raise_for_status()
+
+        data: dict = response.json()
+        refunds: list = data.get("refunds", [])
+        if refunds:
+            refund = refunds[-1]
+            gateway_refund_id: str = refund.get("id", charge_id)
+            refund_amount: int = refund.get("amount", amount or payment.amount_cents)
+        else:
+            gateway_refund_id = charge_id
+            refund_amount = amount if amount is not None else payment.amount_cents
+
+        logger.info(
+            "Pagar.me refund created",
+            extra={
+                "charge_id": charge_id,
+                "refund_id": gateway_refund_id,
+                "payment_id": str(payment.id),
+            },
+        )
+        return PaymentGatewayRefundResponse(
+            gateway_refund_id=gateway_refund_id,
+            status=data.get("status", "refunded"),
+            amount_cents=refund_amount,
+        )
 
     def _verify_signature(self, headers: dict, raw_body: bytes) -> None:
         """Verify the Pagar.me webhook HMAC-SHA256 signature.

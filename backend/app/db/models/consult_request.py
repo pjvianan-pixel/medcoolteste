@@ -17,6 +17,9 @@ class ConsultRequestStatus(enum.StrEnum):
     matched = "matched"
     canceled = "canceled"
     expired = "expired"
+    cancelled_by_patient = "cancelled_by_patient"
+    cancelled_by_professional = "cancelled_by_professional"
+    no_show_patient = "no_show_patient"
 
 
 class ConsultRequest(Base):
@@ -53,6 +56,15 @@ class ConsultRequest(Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    no_show_marked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

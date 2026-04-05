@@ -251,6 +251,9 @@ class ConsultRequestResponse(BaseModel):
     complaint: str
     status: ConsultRequestStatus
     matched_professional_user_id: uuid.UUID | None
+    scheduled_at: datetime | None
+    cancelled_at: datetime | None
+    no_show_marked_at: datetime | None
     created_at: datetime
     updated_at: datetime
     offers: list[ConsultOfferResponse] = []
@@ -272,6 +275,7 @@ class PaymentResponse(BaseModel):
     professional_amount_cents: int
     provider: str
     provider_payment_id: str | None
+    provider_charge_id: str | None
     checkout_url: str | None
     status: PaymentStatus
     created_at: datetime

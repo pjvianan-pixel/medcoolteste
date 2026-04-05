@@ -109,6 +109,7 @@ async def create_payment_for_consult_request(
             charge = await client.create_charge(payment, recipient_id=recipient_id)
             payment.provider = "pagarme"
             payment.provider_payment_id = charge.gateway_payment_id
+            payment.provider_charge_id = charge.gateway_charge_id
             payment.checkout_url = charge.checkout_url
             await db.flush()
         except Exception:
