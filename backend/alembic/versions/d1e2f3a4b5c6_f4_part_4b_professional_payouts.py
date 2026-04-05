@@ -35,7 +35,6 @@ def upgrade() -> None:
             postgresql.UUID(as_uuid=True),
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
-            index=True,
         ),
         sa.Column("total_amount_cents", sa.Integer(), nullable=False),
         sa.Column(
