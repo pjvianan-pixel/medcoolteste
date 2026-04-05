@@ -469,9 +469,10 @@ async def test_patient_can_cancel_unmatched_request(
 
 
 @pytest.mark.asyncio
-async def test_patient_cannot_cancel_matched_request(
+async def test_patient_can_cancel_matched_request(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    """Since F4 Part 3, patients may cancel matched requests (policy-based refund)."""
     spec = await _seed_specialty(db_session)
     await _seed_pricing(db_session, spec.id)
     patient_token, patient_id = await _register_and_login(client, "patient12@cr.com", "patient")
@@ -496,12 +497,13 @@ async def test_patient_cannot_cancel_matched_request(
         headers={"Authorization": f"Bearer {pro_token}"},
     )
 
-    # Patient tries to cancel after match
+    # Patient cancels after match — now allowed, returns 200
     cancel_resp = await client.post(
         f"/patients/me/consult-requests/{cr_id}/cancel",
         headers={"Authorization": f"Bearer {patient_token}"},
     )
-    assert cancel_resp.status_code == 422, cancel_resp.text
+    assert cancel_resp.status_code == 200, cancel_resp.text
+    assert cancel_resp.json()["status"] == "cancelled_by_patient"
 
 
 # ── Professional rejects offer ────────────────────────────────────────────────

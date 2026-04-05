@@ -32,6 +32,7 @@ from app.schemas.schemas import (
     QuoteRequest,
     QuoteResponse,
 )
+from app.services.cancellation import cancel_by_patient
 from app.services.matching import run_matching
 from app.services.payments import create_payment_for_consult_request
 from app.services.pricing import calculate_price, get_demand_for_specialty, quote_expires_at
@@ -246,7 +247,13 @@ async def cancel_consult_request(
     current_user: User = Depends(_patient_dep),
     db: AsyncSession = Depends(get_db),
 ) -> ConsultRequest:
-    """Cancel a consult request if it has not been matched yet."""
+    """Cancel a consult request (patient only).
+
+    For unmatched requests (queued/offering) the request is simply cancelled.
+    For matched requests the cancellation policy is applied:
+    - Early cancellation (≥ min_hours_full_refund before scheduled_at): full refund.
+    - Late cancellation: partial or no refund per policy.
+    """
     result = await db.execute(
         select(ConsultRequest)
         .options(
@@ -263,22 +270,42 @@ async def cancel_consult_request(
             status_code=status.HTTP_404_NOT_FOUND, detail="Consult request not found"
         )
 
+    terminal_statuses = {
+        ConsultRequestStatus.canceled,
+        ConsultRequestStatus.cancelled_by_patient,
+        ConsultRequestStatus.cancelled_by_professional,
+        ConsultRequestStatus.no_show_patient,
+        ConsultRequestStatus.expired,
+    }
+    if consult_request.status in terminal_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Consult request is already cancelled or in a terminal state",
+        )
+
     if consult_request.status == ConsultRequestStatus.matched:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Cannot cancel a matched consult request",
-        )
+        try:
+            await cancel_by_patient(consult_request, db)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+    else:
+        # queued or offering: simple pre-payment cancellation
+        consult_request.status = ConsultRequestStatus.canceled
 
-    if consult_request.status == ConsultRequestStatus.canceled:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Consult request is already canceled",
-        )
-
-    consult_request.status = ConsultRequestStatus.canceled
     await db.commit()
-    await db.refresh(consult_request)
-    return consult_request
+    # Reload to get fresh state including offers
+    reload_result = await db.execute(
+        select(ConsultRequest)
+        .options(
+            selectinload(ConsultRequest.offers).selectinload(ConsultOffer.events)
+        )
+        .where(ConsultRequest.id == consult_request.id)
+        .execution_options(populate_existing=True)
+    )
+    return reload_result.scalar_one()
 
 
 async def _get_offer_for_patient(

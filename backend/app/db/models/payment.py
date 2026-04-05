@@ -15,6 +15,7 @@ class PaymentStatus(enum.StrEnum):
     pending = "pending"
     processing = "processing"
     paid = "paid"
+    refund_pending = "refund_pending"
     refunded = "refunded"
     failed = "failed"
     canceled = "canceled"
@@ -58,6 +59,7 @@ class Payment(Base):
     professional_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
     provider_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_charge_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus, name="payment_status"),

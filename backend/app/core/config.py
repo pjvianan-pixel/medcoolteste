@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     PAGARME_WEBHOOK_SECRET: str = ""
     PAGARME_PLATFORM_RECIPIENT_ID: str = ""
 
+    # Cancellation and no-show policy
+    CANCELLATION_MIN_HOURS_FULL_REFUND: int = 24
+    CANCELLATION_LATE_FEE_PERCENT: int = 50
+    CANCELLATION_NO_SHOW_REFUND_PERCENT: int = 0
+    CANCELLATION_NO_SHOW_GRACE_MINUTES: int = 15
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @model_validator(mode="after")
