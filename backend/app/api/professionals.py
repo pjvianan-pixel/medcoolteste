@@ -1,7 +1,8 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,12 +30,20 @@ from app.schemas.schemas import (
     CounterOfferRequest,
     PaymentResponse,
     PresenceResponse,
+    ProfessionalFinancialSummaryResponse,
+    ProfessionalFinancialTransactionItem,
+    ProfessionalFinancialTransactionsResponse,
     ProfessionalProfileResponse,
     ProfessionalProfileUpdate,
     ProfessionalSpecialtiesUpdate,
     SpecialtyResponse,
 )
 from app.services.cancellation import cancel_by_professional, mark_no_show
+from app.services.professional_financials import (
+    FinancialStatus,
+    get_professional_financial_summary,
+    list_professional_transactions,
+)
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
 
@@ -526,3 +535,74 @@ async def mark_patient_no_show(
         .execution_options(populate_existing=True)
     )
     return reload_result.scalar_one()
+
+
+# ── Financial Statement ───────────────────────────────────────────────────────
+
+
+@router.get("/me/financial/summary", response_model=ProfessionalFinancialSummaryResponse)
+async def get_financial_summary(
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ProfessionalFinancialSummaryResponse:
+    """Return the financial summary for the authenticated professional.
+
+    - ``total_received``: sum of professional_amount for paid transactions.
+    - ``total_pending``: sum for pending/refund_pending transactions.
+    - ``total_refunded``: sum for refunded transactions.
+    """
+    summary = await get_professional_financial_summary(current_user.id, db)
+    return ProfessionalFinancialSummaryResponse(
+        total_received=summary.total_received,
+        total_pending=summary.total_pending,
+        total_refunded=summary.total_refunded,
+    )
+
+
+@router.get(
+    "/me/financial/transactions",
+    response_model=ProfessionalFinancialTransactionsResponse,
+)
+async def get_financial_transactions(
+    page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+    limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
+    from_date: Optional[datetime] = Query(default=None, description="Filter payments created on or after this datetime (ISO 8601)"),
+    to_date: Optional[datetime] = Query(default=None, description="Filter payments created on or before this datetime (ISO 8601)"),
+    financial_status: Optional[FinancialStatus] = Query(default=None, description="Filter by financial status"),
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ProfessionalFinancialTransactionsResponse:
+    """Return a paginated list of financial transactions for the authenticated professional.
+
+    Optional filters:
+    - ``from_date`` / ``to_date``: filter by payment creation date.
+    - ``financial_status``: filter by ``pending``, ``paid``, ``refund_pending``,
+      ``refunded``, or ``canceled``.
+    """
+    items, total = await list_professional_transactions(
+        current_user.id,
+        db,
+        from_date=from_date,
+        to_date=to_date,
+        financial_status=financial_status,
+        page=page,
+        limit=limit,
+    )
+    return ProfessionalFinancialTransactionsResponse(
+        items=[
+            ProfessionalFinancialTransactionItem(
+                consult_request_id=item.consult_request_id,
+                payment_id=item.payment_id,
+                scheduled_at=item.scheduled_at,
+                created_at=item.created_at,
+                amount_total=item.amount_total,
+                platform_fee_amount=item.platform_fee_amount,
+                professional_amount=item.professional_amount,
+                financial_status=item.financial_status,
+            )
+            for item in items
+        ],
+        total=total,
+        page=page,
+        limit=limit,
+    )
