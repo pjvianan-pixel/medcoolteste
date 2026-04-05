@@ -58,6 +58,7 @@ class Payment(Base):
     professional_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
     provider_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus, name="payment_status"),
         nullable=False,
@@ -103,6 +104,7 @@ class PaymentEvent(Base):
         SAEnum(PaymentEventType, name="payment_event_type"),
         nullable=False,
     )
+    gateway_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

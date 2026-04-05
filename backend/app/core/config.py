@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     MATCH_OFFER_BATCH_SIZE: int = 5
     PLATFORM_FEE_PERCENT: int = 20
 
+    # Pagar.me payment gateway settings
+    PAGARME_API_KEY: str = ""
+    PAGARME_BASE_URL: str = "https://api.pagar.me/core/v5"
+    PAGARME_WEBHOOK_SECRET: str = ""
+    PAGARME_PLATFORM_RECIPIENT_ID: str = ""
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @model_validator(mode="after")
