@@ -319,3 +319,51 @@ class ProfessionalFinancialTransactionsResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+
+# ── Admin Financial ───────────────────────────────────────────────────────────
+
+
+class AdminFinancialSummaryResponse(BaseModel):
+    total_payments_cents: int
+    total_platform_fees_cents: int
+    total_professional_amount_cents: int
+    total_refunded_cents: int
+
+
+class AdminFinancialTransactionItem(BaseModel):
+    payment_id: uuid.UUID
+    consult_request_id: uuid.UUID
+    patient_user_id: uuid.UUID
+    professional_user_id: uuid.UUID | None
+    amount_total_cents: int
+    platform_fee_cents: int
+    professional_amount_cents: int
+    financial_status: FinancialStatus
+    payout_id: uuid.UUID | None
+    created_at: datetime
+
+
+class AdminFinancialTransactionsResponse(BaseModel):
+    items: list[AdminFinancialTransactionItem]
+    total: int
+    page: int
+    limit: int
+
+
+class AdminPayoutRequest(BaseModel):
+    payment_ids: list[uuid.UUID]
+
+
+class AdminPayoutProfessionalSummary(BaseModel):
+    professional_user_id: uuid.UUID
+    payout_id: uuid.UUID
+    total_professional_amount_cents: int
+    payment_count: int
+
+
+class AdminPayoutResult(BaseModel):
+    payouts_created: int
+    payments_included: int
+    already_paid: int
+    professional_summaries: list[AdminPayoutProfessionalSummary]
