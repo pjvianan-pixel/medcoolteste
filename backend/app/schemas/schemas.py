@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 from app.db.models.consult_offer import ActorRole, ConsultOfferStatus, CounterStatus, EventType
 from app.db.models.consult_quote import QuoteStatus
 from app.db.models.consult_request import ConsultRequestStatus
+from app.db.models.payment import PaymentStatus
 from app.db.models.professional_profile import VerificationStatus
 from app.db.models.user import UserRole
 
@@ -255,4 +256,26 @@ class ConsultRequestResponse(BaseModel):
     offers: list[ConsultOfferResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+# ── Payment ───────────────────────────────────────────────────────────────────
+
+
+class PaymentResponse(BaseModel):
+    id: uuid.UUID
+    consult_request_id: uuid.UUID
+    patient_user_id: uuid.UUID
+    professional_user_id: uuid.UUID | None
+    amount_cents: int
+    currency: str
+    platform_fee_cents: int
+    professional_amount_cents: int
+    provider: str
+    provider_payment_id: str | None
+    status: PaymentStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
 
