@@ -9,6 +9,7 @@ from app.db.models.consult_request import ConsultRequestStatus
 from app.db.models.payment import PaymentStatus
 from app.db.models.professional_profile import VerificationStatus
 from app.db.models.user import UserRole
+from app.services.professional_financials import FinancialStatus
 
 # ── Auth ────────────────────────────────────────────────────────────────────
 
@@ -284,3 +285,37 @@ class PaymentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Professional Financial Statement ─────────────────────────────────────────
+
+
+class ProfessionalFinancialSummaryResponse(BaseModel):
+    total_received: int
+    """Sum of professional_amount_cents for paid transactions (cents)."""
+
+    total_pending: int
+    """Sum of professional_amount_cents for pending/refund_pending transactions (cents)."""
+
+    total_refunded: int
+    """Sum of professional_amount_cents for refunded transactions (cents)."""
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalFinancialTransactionItem(BaseModel):
+    consult_request_id: uuid.UUID
+    payment_id: uuid.UUID
+    scheduled_at: datetime | None
+    created_at: datetime
+    amount_total: int
+    platform_fee_amount: int
+    professional_amount: int
+    financial_status: FinancialStatus
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalFinancialTransactionsResponse(BaseModel):
+    items: list[ProfessionalFinancialTransactionItem]
+    total: int
+    page: int
+    limit: int
