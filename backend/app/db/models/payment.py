@@ -61,6 +61,12 @@ class Payment(Base):
     provider_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     provider_charge_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payout_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("professional_payouts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[PaymentStatus] = mapped_column(
         SAEnum(PaymentStatus, name="payment_status"),
         nullable=False,
@@ -87,6 +93,9 @@ class Payment(Base):
     )
     events: Mapped[list["PaymentEvent"]] = relationship(
         "PaymentEvent", back_populates="payment", lazy="select"
+    )
+    payout: Mapped["ProfessionalPayout | None"] = relationship(  # noqa: F821
+        "ProfessionalPayout", back_populates="payments", foreign_keys=[payout_id]
     )
 
 
