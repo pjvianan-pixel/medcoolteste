@@ -88,6 +88,11 @@ async def _has_pending_refund(payment: Payment, db: AsyncSession) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+def _calc_percent_amount(total_cents: int, percent: int) -> int:
+    """Return ``percent``% of ``total_cents`` rounded to nearest cent."""
+    return round(total_cents * percent / 100)
+
+
 async def _issue_refund(
     payment: Payment,
     refund_amount: int,
@@ -196,8 +201,8 @@ async def cancel_by_patient(
                 refund_amount = payment.amount_cents
             else:
                 # Late cancellation: retain fee_percent, refund the rest
-                retained = round(
-                    payment.amount_cents * policy.late_cancellation_fee_percent / 100
+                retained = _calc_percent_amount(
+                    payment.amount_cents, policy.late_cancellation_fee_percent
                 )
                 refund_amount = payment.amount_cents - retained
 
@@ -367,8 +372,8 @@ async def mark_no_show(
     consult_request.no_show_marked_at = now
 
     if payment is not None:
-        refund_amount = round(
-            payment.amount_cents * policy.no_show_refund_percent / 100
+        refund_amount = _calc_percent_amount(
+            payment.amount_cents, policy.no_show_refund_percent
         )
 
         db.add(
