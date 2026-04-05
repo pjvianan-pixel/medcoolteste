@@ -1,22 +1,32 @@
 """Payment domain service: create payments and update status.
 
 This module contains business logic for the internal payment domain.
-It does not integrate with any external payment gateway; that is reserved
-for F4 Part 2.
+Gateway integration with Pagar.me is delegated to
+``app.integrations.pagarme_client.PagarmeClient`` and is activated only when
+``PAGARME_API_KEY`` is configured.  If the key is absent the payment is still
+created as ``pending`` with ``provider="pending"``, which keeps the existing
+test suite working without real credentials.
 """
 
+import logging
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models.consult_request import ConsultRequest
 from app.db.models.payment import Payment, PaymentEvent, PaymentEventType, PaymentStatus
+from app.db.models.professional_profile import ProfessionalProfile
+
+logger = logging.getLogger(__name__)
 
 
 async def create_payment_for_consult_request(
     consult_request: ConsultRequest,
     db: AsyncSession,
+    *,
+    gateway_client=None,  # type: ignore[assignment]
 ) -> Payment:
     """Create a pending Payment for a matched consult request.
 
@@ -24,9 +34,17 @@ async def create_payment_for_consult_request(
     ``settings.PLATFORM_FEE_PERCENT``.  The ``consult_request`` must already
     have its ``quote`` relationship loaded (or it will fail).
 
+    When ``PAGARME_API_KEY`` is configured (or a ``gateway_client`` is
+    explicitly passed for testing), the function calls
+    ``PagarmeClient.create_charge`` and persists the returned
+    ``provider_payment_id`` and ``checkout_url`` on the payment record.
+
     Args:
         consult_request: A matched ConsultRequest with an eagerly-loaded quote.
         db: The current async database session.
+        gateway_client: Optional override of the payment gateway client used
+            for dependency-injection in tests.  Defaults to a new
+            ``PagarmeClient()`` instance when ``PAGARME_API_KEY`` is set.
 
     Returns:
         The newly created Payment (not yet committed).
@@ -62,6 +80,43 @@ async def create_payment_for_consult_request(
     )
     db.add(event)
     await db.flush()
+
+    # ── Gateway integration ───────────────────────────────────────────────────
+    # Resolve the gateway client to use.  A caller-provided client is used
+    # first (useful in tests); otherwise instantiate PagarmeClient when the
+    # API key is configured.
+    client = gateway_client
+    if client is None and settings.PAGARME_API_KEY:
+        from app.integrations.pagarme_client import PagarmeClient  # noqa: PLC0415
+
+        client = PagarmeClient()
+
+    if client is not None:
+        # Look up the professional's Pagar.me recipient ID if available.
+        recipient_id: str | None = None
+        if consult_request.matched_professional_user_id is not None:
+            result = await db.execute(
+                select(ProfessionalProfile).where(
+                    ProfessionalProfile.user_id
+                    == consult_request.matched_professional_user_id
+                )
+            )
+            prof_profile = result.scalar_one_or_none()
+            if prof_profile is not None:
+                recipient_id = prof_profile.pagarme_recipient_id
+
+        try:
+            charge = await client.create_charge(payment, recipient_id=recipient_id)
+            payment.provider = "pagarme"
+            payment.provider_payment_id = charge.gateway_payment_id
+            payment.checkout_url = charge.checkout_url
+            await db.flush()
+        except Exception:
+            logger.exception(
+                "Gateway charge creation failed for payment %s; "
+                "leaving provider=pending",
+                payment.id,
+            )
 
     return payment
 

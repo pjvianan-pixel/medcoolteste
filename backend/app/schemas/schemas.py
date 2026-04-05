@@ -272,6 +272,7 @@ class PaymentResponse(BaseModel):
     professional_amount_cents: int
     provider: str
     provider_payment_id: str | None
+    checkout_url: str | None
     status: PaymentStatus
     created_at: datetime
     updated_at: datetime
