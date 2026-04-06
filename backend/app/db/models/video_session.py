@@ -73,3 +73,4 @@ class VideoSession(Base):
     __table_args__ = (
         UniqueConstraint("consult_request_id", name="uq_video_sessions_consult_request_id"),
     )
+
