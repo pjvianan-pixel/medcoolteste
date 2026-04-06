@@ -36,6 +36,7 @@ from app.schemas.schemas import (
     PaymentResponse,
     QuoteRequest,
     QuoteResponse,
+    VideoSessionResponse,
 )
 from app.services.cancellation import cancel_by_patient
 from app.services.chat import list_chat_messages
@@ -44,6 +45,7 @@ from app.services.medical_documents import get_document_for_patient, list_docume
 from app.services.patient_history import get_patient_consult_detail, list_patient_consult_history
 from app.services.payments import create_payment_for_consult_request
 from app.services.pricing import calculate_price, get_demand_for_specialty, quote_expires_at
+from app.services.video_sessions import end_video_session, get_video_session
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -776,3 +778,55 @@ async def patient_list_chat_messages(
         page=page,
         limit=limit,
     )
+
+
+# ── F3 Part 2 – Video session endpoints (patient) ────────────────────────────
+
+
+@router.get(
+    "/me/consult-requests/{consult_id}/video-session",
+    response_model=VideoSessionResponse,
+    summary="Get the video session for a consult (patient)",
+)
+async def patient_get_video_session(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> VideoSessionResponse:
+    """Return the VideoSession provisioned for this consult.
+
+    Returns HTTP 404 if the professional has not created a session yet.
+    """
+    session = await get_video_session(
+        db=db,
+        consult_request_id=consult_id,
+        user_id=current_user.id,
+    )
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No video session found for this consult request",
+        )
+    return VideoSessionResponse.model_validate(session)
+
+
+@router.post(
+    "/me/consult-requests/{consult_id}/video-session/end",
+    response_model=VideoSessionResponse,
+    summary="End the video session for a consult (patient)",
+)
+async def patient_end_video_session(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> VideoSessionResponse:
+    """Mark the VideoSession as ENDED and close the Twilio room.
+
+    Either participant may call this endpoint.
+    """
+    session = await end_video_session(
+        db=db,
+        consult_request_id=consult_id,
+        user_id=current_user.id,
+    )
+    return VideoSessionResponse.model_validate(session)

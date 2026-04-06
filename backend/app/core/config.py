@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     CANCELLATION_NO_SHOW_REFUND_PERCENT: int = 0
     CANCELLATION_NO_SHOW_GRACE_MINUTES: int = 15
 
+    # Video provider (F3 Part 2)
+    VIDEO_PROVIDER: str = "TWILIO"
+    TWILIO_ACCOUNT_SID: str | None = None
+    TWILIO_API_KEY: str | None = None
+    TWILIO_API_SECRET: str | None = None
+    TWILIO_VIDEO_ROOM_PREFIX: str = "medcool-"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @model_validator(mode="after")

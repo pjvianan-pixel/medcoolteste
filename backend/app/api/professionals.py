@@ -48,6 +48,7 @@ from app.schemas.schemas import (
     ProfessionalProfileUpdate,
     ProfessionalSpecialtiesUpdate,
     SpecialtyResponse,
+    VideoSessionResponse,
 )
 from app.services.cancellation import cancel_by_professional, mark_no_show
 from app.services.chat import list_chat_messages
@@ -66,6 +67,11 @@ from app.services.professional_history import (
     ProfessionalConsultHistoryItem as _ProHistoryItem,
     get_professional_consult_detail,
     list_professional_consult_history,
+)
+from app.services.video_sessions import (
+    create_video_session,
+    end_video_session,
+    get_video_session,
 )
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
@@ -897,3 +903,80 @@ async def professional_list_chat_messages(
         page=page,
         limit=limit,
     )
+
+
+# ── F3 Part 2 – Video session endpoints (professional) ───────────────────────
+
+
+@router.post(
+    "/me/consult-requests/{consult_id}/video-session",
+    response_model=VideoSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a video session for a consult (professional only)",
+)
+async def professional_create_video_session(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> VideoSessionResponse:
+    """Provision a Twilio Video room for the given consult request.
+
+    Only the matched professional may call this endpoint.  Returns HTTP 409 if
+    a session already exists, HTTP 422 if the consult is not in ``matched``
+    status.
+    """
+    session = await create_video_session(
+        db=db,
+        consult_request_id=consult_id,
+        professional_user_id=current_user.id,
+    )
+    return VideoSessionResponse.model_validate(session)
+
+
+@router.get(
+    "/me/consult-requests/{consult_id}/video-session",
+    response_model=VideoSessionResponse,
+    summary="Get the video session for a consult (professional)",
+)
+async def professional_get_video_session(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> VideoSessionResponse:
+    """Return the active VideoSession for the given consult request.
+
+    Returns HTTP 404 if no session exists yet.
+    """
+    session = await get_video_session(
+        db=db,
+        consult_request_id=consult_id,
+        user_id=current_user.id,
+    )
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No video session found for this consult request",
+        )
+    return VideoSessionResponse.model_validate(session)
+
+
+@router.post(
+    "/me/consult-requests/{consult_id}/video-session/end",
+    response_model=VideoSessionResponse,
+    summary="End the video session for a consult (professional)",
+)
+async def professional_end_video_session(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> VideoSessionResponse:
+    """Mark the VideoSession as ENDED and close the Twilio room.
+
+    Either participant may call this endpoint.
+    """
+    session = await end_video_session(
+        db=db,
+        consult_request_id=consult_id,
+        user_id=current_user.id,
+    )
+    return VideoSessionResponse.model_validate(session)
