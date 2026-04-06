@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     PAGARME_WEBHOOK_SECRET: str = ""
     PAGARME_PLATFORM_RECIPIENT_ID: str = ""
 
+    # Medical document storage
+    DOCUMENTS_STORAGE_PATH: str = "documents"
+    DOCUMENTS_BASE_URL: str = "/static/documents"
+
     # Cancellation and no-show policy
     CANCELLATION_MIN_HOURS_FULL_REFUND: int = 24
     CANCELLATION_LATE_FEE_PERCENT: int = 50

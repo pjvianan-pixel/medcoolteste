@@ -47,6 +47,7 @@ from app.services.medical_documents import (
     create_exam_request_for_consult,
     create_prescription_for_consult,
     list_documents_for_consult,
+    sign_medical_document,
 )
 from app.services.professional_financials import (
     FinancialStatus,
@@ -680,3 +681,26 @@ async def list_consult_documents(
     Only the professional matched to the consult may access its documents.
     """
     return await list_documents_for_consult(db, consult_id, current_user)
+
+
+# ── F5 Part 2 – Document signing ──────────────────────────────────────────────
+
+
+@router.post(
+    "/me/documents/{document_id}/sign",
+    response_model=MedicalDocumentResponse,
+    summary="Sign a medical document",
+)
+async def sign_document(
+    document_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> MedicalDocumentResponse:
+    """Sign a DRAFT medical document (prescription or exam request).
+
+    - Only the professional who created the document may sign it.
+    - Document must be in DRAFT status.
+    - Transitions the document to SIGNED, sets ``signature_type = SIMPLE``,
+      records ``signed_at``, generates a PDF and stores its URL in ``file_url``.
+    """
+    return await sign_medical_document(db, document_id, current_user)

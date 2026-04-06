@@ -429,6 +429,8 @@ class MedicalDocumentResponse(BaseModel):
     status: DocumentStatus
     signature_type: SignatureType
     signed_at: datetime | None
+    file_url: str | None
+    """URL to the generated PDF file; populated after signing."""
     content: list[Any]
     """Parsed list of items (PrescriptionItem or ExamRequestItem dicts)."""
     summary: str
