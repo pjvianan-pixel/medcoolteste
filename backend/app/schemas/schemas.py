@@ -1,11 +1,13 @@
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, field_validator
 
 from app.db.models.consult_offer import ActorRole, ConsultOfferStatus, CounterStatus, EventType
 from app.db.models.consult_quote import QuoteStatus
 from app.db.models.consult_request import ConsultRequestStatus
+from app.db.models.medical_document import DocumentStatus, DocumentSubtype, DocumentType, SignatureType
 from app.db.models.payment import PaymentStatus
 from app.db.models.professional_profile import VerificationStatus
 from app.db.models.user import UserRole
@@ -367,3 +369,72 @@ class AdminPayoutResult(BaseModel):
     payments_included: int
     already_paid: int
     professional_summaries: list[AdminPayoutProfessionalSummary]
+
+
+# ── Medical Documents (F5 Part 1) ─────────────────────────────────────────────
+
+
+class PrescriptionItem(BaseModel):
+    """Single medication entry in a prescription."""
+
+    drug_name: str
+    dosage: str
+    instructions: str
+    duration_days: int | None = None
+
+
+class ExamRequestItem(BaseModel):
+    """Single exam entry in an exam request."""
+
+    exam_name: str
+    type: DocumentSubtype
+    notes: str | None = None
+
+
+class PrescriptionCreate(BaseModel):
+    """Payload to create a prescription document."""
+
+    items: list[PrescriptionItem]
+
+    @field_validator("items")
+    @classmethod
+    def items_not_empty(cls, v: list) -> list:
+        if not v:
+            raise ValueError("items must not be empty")
+        return v
+
+
+class ExamRequestCreate(BaseModel):
+    """Payload to create an exam request document."""
+
+    items: list[ExamRequestItem]
+
+    @field_validator("items")
+    @classmethod
+    def items_not_empty(cls, v: list) -> list:
+        if not v:
+            raise ValueError("items must not be empty")
+        return v
+
+
+class MedicalDocumentResponse(BaseModel):
+    """Response schema for a medical document (prescription or exam request)."""
+
+    id: uuid.UUID
+    consult_request_id: uuid.UUID
+    professional_user_id: uuid.UUID
+    patient_user_id: uuid.UUID
+    document_type: DocumentType
+    subtype: DocumentSubtype | None
+    status: DocumentStatus
+    signature_type: SignatureType
+    signed_at: datetime | None
+    content: list[Any]
+    """Parsed list of items (PrescriptionItem or ExamRequestItem dicts)."""
+    summary: str
+    """Human-readable summary: first drug name or first exam name."""
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
