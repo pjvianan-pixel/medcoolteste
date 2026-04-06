@@ -23,6 +23,8 @@ from app.db.models.specialty import Specialty
 from app.db.models.user import User, UserRole
 from app.db.session import get_db
 from app.schemas.schemas import (
+    ChatMessagePageResponse,
+    ChatMessageResponse,
     ConsultOfferResponse,
     ConsultRequestCreate,
     ConsultRequestResponse,
@@ -36,6 +38,7 @@ from app.schemas.schemas import (
     QuoteResponse,
 )
 from app.services.cancellation import cancel_by_patient
+from app.services.chat import list_chat_messages
 from app.services.matching import run_matching
 from app.services.medical_documents import get_document_for_patient, list_documents_for_patient
 from app.services.patient_history import get_patient_consult_detail, list_patient_consult_history
@@ -733,4 +736,43 @@ def _map_document_summary(doc_data) -> "PatientConsultHistoryDocumentSummary":  
         created_at=doc_data.created_at,
         file_url=doc_data.file_url,
         summary=doc_data.summary,
+    )
+
+
+# ── Chat history (F3 Part 1) ──────────────────────────────────────────────────
+
+
+@router.get(
+    "/me/consult-requests/{consult_id}/chat/messages",
+    response_model=ChatMessagePageResponse,
+    summary="List chat messages for a consult (patient)",
+)
+async def patient_list_chat_messages(
+    consult_id: uuid.UUID,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    before: datetime | None = Query(None, description="Return messages sent before this timestamp"),
+    after: datetime | None = Query(None, description="Return messages sent after this timestamp"),
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ChatMessagePageResponse:
+    """Return the paginated chat history for a consult request.
+
+    Only the patient of the consult can access this endpoint.
+    Supports infinite-scroll pagination via the ``before``/``after`` filters.
+    """
+    messages, total = await list_chat_messages(
+        db=db,
+        consult_id=consult_id,
+        user_id=current_user.id,
+        page=page,
+        limit=limit,
+        before=before,
+        after=after,
+    )
+    return ChatMessagePageResponse(
+        items=[ChatMessageResponse.model_validate(m) for m in messages],
+        total=total,
+        page=page,
+        limit=limit,
     )
