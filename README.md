@@ -114,3 +114,38 @@ mypy app
 
 - [Architecture](docs/architecture.md)
 - [Domain Model](docs/domain.md)
+
+## Twilio Video Setup (F3 Part 3)
+
+The video consultation feature uses [Twilio Video](https://www.twilio.com/docs/video).
+When the required credentials are absent the service falls back to stub values
+so local development and tests work without a real Twilio account.
+
+### Create credentials
+
+1. Log in to the [Twilio Console](https://console.twilio.com).
+2. Copy your **Account SID** (starts with `AC`).
+3. Go to **Account › API Keys & Tokens** and create a new **Standard** API key.
+   Copy the **SID** (starts with `SK`) and the **Secret** (shown once only).
+
+### Configure environment
+
+Add the following to `backend/.env`:
+
+```ini
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_API_KEY=SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_API_SECRET=<your-api-secret>
+TWILIO_VIDEO_ROOM_PREFIX=medcool-   # optional
+```
+
+### How it works
+
+| Env vars set? | Behaviour |
+|---|---|
+| Yes | Real Twilio rooms created; JWT access tokens signed with your credentials |
+| No  | Stub mode: deterministic mock values, no external calls |
+
+Access tokens are short-lived JWTs issued per participant and per room.  Each
+REST response that returns a `VideoSessionResponse` includes an `access_token`
+field that the front-end passes to the Twilio Video JS SDK to join the room.

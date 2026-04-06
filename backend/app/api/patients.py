@@ -797,7 +797,7 @@ async def patient_get_video_session(
 
     Returns HTTP 404 if the professional has not created a session yet.
     """
-    session = await get_video_session(
+    session, access_token = await get_video_session(
         db=db,
         consult_request_id=consult_id,
         user_id=current_user.id,
@@ -807,7 +807,9 @@ async def patient_get_video_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No video session found for this consult request",
         )
-    return VideoSessionResponse.model_validate(session)
+    response = VideoSessionResponse.model_validate(session)
+    response.access_token = access_token
+    return response
 
 
 @router.post(
