@@ -1,6 +1,7 @@
 from app.db.models.consult_offer import ConsultOffer, ConsultOfferEvent
 from app.db.models.consult_quote import ConsultQuote
 from app.db.models.consult_request import ConsultRequest
+from app.db.models.medical_document import MedicalDocument
 from app.db.models.patient_profile import PatientProfile
 from app.db.models.payment import Payment, PaymentEvent
 from app.db.models.professional_payout import ProfessionalPayout
@@ -26,4 +27,5 @@ __all__ = [
     "Payment",
     "PaymentEvent",
     "ProfessionalPayout",
+    "MedicalDocument",
 ]

@@ -17,6 +17,7 @@ from app.db.models.consult_offer import (
     EventType,
 )
 from app.db.models.consult_request import ConsultRequest, ConsultRequestStatus
+from app.db.models.medical_document import MedicalDocument
 from app.db.models.payment import Payment
 from app.db.models.professional_presence import ProfessionalPresence
 from app.db.models.professional_profile import ProfessionalProfile
@@ -28,8 +29,11 @@ from app.schemas.schemas import (
     ConsultOfferResponse,
     ConsultRequestResponse,
     CounterOfferRequest,
+    ExamRequestCreate,
+    MedicalDocumentResponse,
     PaymentResponse,
     PresenceResponse,
+    PrescriptionCreate,
     ProfessionalFinancialSummaryResponse,
     ProfessionalFinancialTransactionItem,
     ProfessionalFinancialTransactionsResponse,
@@ -39,6 +43,11 @@ from app.schemas.schemas import (
     SpecialtyResponse,
 )
 from app.services.cancellation import cancel_by_professional, mark_no_show
+from app.services.medical_documents import (
+    create_exam_request_for_consult,
+    create_prescription_for_consult,
+    list_documents_for_consult,
+)
 from app.services.professional_financials import (
     FinancialStatus,
     get_professional_financial_summary,
@@ -611,3 +620,63 @@ async def get_financial_transactions(
         page=page,
         limit=limit,
     )
+
+
+# ── F5 Part 1 – Medical Documents ─────────────────────────────────────────────
+
+
+@router.post(
+    "/me/consult-requests/{consult_id}/prescriptions",
+    response_model=MedicalDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a prescription for a consult",
+)
+async def create_prescription(
+    consult_id: uuid.UUID,
+    body: PrescriptionCreate,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> MedicalDocumentResponse:
+    """Create a prescription document linked to the given consult request.
+
+    Only the professional matched to the consult may create documents for it.
+    The consult must be in ``matched`` or ``no_show_patient`` status.
+    """
+    return await create_prescription_for_consult(db, consult_id, current_user, body)
+
+
+@router.post(
+    "/me/consult-requests/{consult_id}/exam-requests",
+    response_model=MedicalDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an exam request for a consult",
+)
+async def create_exam_request(
+    consult_id: uuid.UUID,
+    body: ExamRequestCreate,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> MedicalDocumentResponse:
+    """Create an exam request (lab or imaging) linked to the given consult request.
+
+    Only the professional matched to the consult may create documents for it.
+    The consult must be in ``matched`` or ``no_show_patient`` status.
+    """
+    return await create_exam_request_for_consult(db, consult_id, current_user, body)
+
+
+@router.get(
+    "/me/consult-requests/{consult_id}/documents",
+    response_model=list[MedicalDocumentResponse],
+    summary="List all documents for a consult",
+)
+async def list_consult_documents(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> list[MedicalDocumentResponse]:
+    """Return all medical documents (prescriptions and exam requests) for a consult.
+
+    Only the professional matched to the consult may access its documents.
+    """
+    return await list_documents_for_consult(db, consult_id, current_user)
