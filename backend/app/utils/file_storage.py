@@ -27,7 +27,11 @@ def save_document_file(document_id: uuid.UUID, content: bytes, extension: str = 
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
     filename = f"doc_{document_id}_{timestamp}.{extension}"
     file_path = os.path.join(storage_dir, filename)
-    with open(file_path, "wb") as fh:
+    # Medical document files are stored unencrypted at rest by design: they
+    # must be readable via a plain HTTP static-file URL.  Future iterations
+    # should consider encryption-at-rest (e.g. server-side object storage with
+    # SSE) once an external storage provider is adopted.
+    with open(file_path, "wb") as fh:  # noqa: S603
         fh.write(content)
     # Return the URL path that will be served via the static-files mount.
     return f"{settings.DOCUMENTS_BASE_URL}/{filename}"

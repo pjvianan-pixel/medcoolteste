@@ -32,3 +32,6 @@ htmlcov/
 .vscode/
 .idea/
 *.swp
+
+# Generated medical document files (created at runtime by the application)
+backend/documents/
