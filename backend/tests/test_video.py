@@ -741,7 +741,7 @@ def test_twilio_create_video_room_stub():
     try:
         info = tv_module.create_video_room(consult_id, user_id)
         assert info.room_id == f"medcool-consult-{consult_id}"
-        assert "video.twilio.com" in info.room_url
+        assert info.room_url == f"https://video.twilio.com/rooms/medcool-consult-{consult_id}"
         assert info.token.startswith("stub-jwt-")
         assert str(user_id) in info.token
     finally:
