@@ -489,3 +489,60 @@ class PatientConsultHistoryResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+
+# ── Professional History (F6 Part 2) ─────────────────────────────────────────
+
+
+class ProfessionalConsultHistoryDocumentSummary(BaseModel):
+    """Reduced document view for the professional history endpoint."""
+
+    id: uuid.UUID
+    document_type: DocumentType
+    status: DocumentStatus
+    created_at: datetime
+    file_url: str | None
+    """Only populated for SIGNED documents."""
+    summary: str
+
+
+class ProfessionalConsultPaymentSummary(BaseModel):
+    """Reduced payment view for the professional history endpoint."""
+
+    status: PaymentStatus
+    financial_status: str
+    """FinancialStatus value (pending/paid/refund_pending/refunded/canceled)."""
+    amount_total_cents: int
+    professional_amount_cents: int
+    platform_fee_cents: int
+    refunded_amount_cents: int
+
+
+class ProfessionalConsultPayoutSummary(BaseModel):
+    """Payout information linked to a payment, for the professional history."""
+
+    payout_id: uuid.UUID
+    paid_out_at: datetime
+
+
+class ProfessionalConsultHistoryItem(BaseModel):
+    """Aggregated history item for one consult request (professional view)."""
+
+    consult_id: uuid.UUID
+    created_at: datetime
+    scheduled_at: datetime | None
+    status: ConsultRequestStatus
+    specialty_id: uuid.UUID
+    patient_name: str | None
+    payment: ProfessionalConsultPaymentSummary | None
+    payout: ProfessionalConsultPayoutSummary | None
+    documents: list[ProfessionalConsultHistoryDocumentSummary]
+
+
+class ProfessionalConsultHistoryResponse(BaseModel):
+    """Paginated response for the professional history endpoint."""
+
+    items: list[ProfessionalConsultHistoryItem]
+    total: int
+    page: int
+    limit: int
