@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -27,6 +27,8 @@ from app.schemas.schemas import (
     ConsultRequestCreate,
     ConsultRequestResponse,
     MedicalDocumentResponse,
+    PatientConsultHistoryItem,
+    PatientConsultHistoryResponse,
     PatientProfileResponse,
     PatientProfileUpdate,
     PaymentResponse,
@@ -36,6 +38,7 @@ from app.schemas.schemas import (
 from app.services.cancellation import cancel_by_patient
 from app.services.matching import run_matching
 from app.services.medical_documents import get_document_for_patient, list_documents_for_patient
+from app.services.patient_history import get_patient_consult_detail, list_patient_consult_history
 from app.services.payments import create_payment_for_consult_request
 from app.services.pricing import calculate_price, get_demand_for_specialty, quote_expires_at
 
@@ -597,3 +600,139 @@ async def get_patient_document(
     Use ``file_url`` in the response to download the generated PDF.
     """
     return await get_document_for_patient(db, document_id, current_user)
+
+
+# ── F6 Part 1 – Patient consult history ──────────────────────────────────────
+
+
+@router.get(
+    "/me/history/consults",
+    response_model=PatientConsultHistoryResponse,
+    summary="Patient consult history (paginated)",
+)
+async def get_patient_history(
+    from_date: datetime | None = Query(default=None, description="Filter consults created on/after this date"),
+    to_date: datetime | None = Query(default=None, description="Filter consults created on/before this date"),
+    consult_status: str | None = Query(default=None, description="Filter by consult status"),
+    has_documents: bool | None = Query(default=None, description="Filter by presence of documents"),
+    page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+    limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> PatientConsultHistoryResponse:
+    """Return the authenticated patient's paginated consult history.
+
+    Each item aggregates consult info, payment summary, and associated
+    medical documents.  Only read operations are performed.
+    """
+    from app.db.models.consult_request import ConsultRequestStatus  # noqa: PLC0415
+
+    parsed_status: ConsultRequestStatus | None = None
+    if consult_status is not None:
+        try:
+            parsed_status = ConsultRequestStatus(consult_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid consult_status '{consult_status}'",
+            )
+
+    page_result = await list_patient_consult_history(
+        patient_user_id=current_user.id,
+        db=db,
+        from_date=from_date,
+        to_date=to_date,
+        consult_status=parsed_status,
+        has_documents=has_documents,
+        page=page,
+        limit=limit,
+    )
+
+    items = [
+        PatientConsultHistoryItem(
+            consult_id=item.consult_id,
+            created_at=item.created_at,
+            scheduled_at=item.scheduled_at,
+            status=item.status,
+            specialty=item.specialty,
+            professional_name=item.professional_name,
+            professional_specialty=item.professional_specialty,
+            professional_crm=item.professional_crm,
+            payment=_map_payment_summary(item.payment),
+            documents=[
+                _map_document_summary(d) for d in item.documents
+            ],
+        )
+        for item in page_result.items
+    ]
+
+    return PatientConsultHistoryResponse(
+        items=items,
+        total=page_result.total,
+        page=page_result.page,
+        limit=page_result.limit,
+    )
+
+
+@router.get(
+    "/me/history/consults/{consult_id}",
+    response_model=PatientConsultHistoryItem,
+    summary="Get a single consult history item (patient)",
+)
+async def get_patient_history_detail(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> PatientConsultHistoryItem:
+    """Return the history detail for a single consult belonging to the patient."""
+    item = await get_patient_consult_detail(
+        patient_user_id=current_user.id,
+        consult_id=consult_id,
+        db=db,
+    )
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Consult request not found",
+        )
+    return PatientConsultHistoryItem(
+        consult_id=item.consult_id,
+        created_at=item.created_at,
+        scheduled_at=item.scheduled_at,
+        status=item.status,
+        specialty=item.specialty,
+        professional_name=item.professional_name,
+        professional_specialty=item.professional_specialty,
+        professional_crm=item.professional_crm,
+        payment=_map_payment_summary(item.payment),
+        documents=[_map_document_summary(d) for d in item.documents],
+    )
+
+
+# ── Private mapping helpers ───────────────────────────────────────────────────
+
+
+def _map_payment_summary(payment_data) -> "PatientConsultPaymentSummary | None":  # type: ignore[name-defined]
+    from app.schemas.schemas import PatientConsultPaymentSummary  # noqa: PLC0415
+
+    if payment_data is None:
+        return None
+    return PatientConsultPaymentSummary(
+        status=payment_data.status,
+        amount_total_cents=payment_data.amount_total_cents,
+        refunded_amount_cents=payment_data.refunded_amount_cents,
+        method=payment_data.method,
+    )
+
+
+def _map_document_summary(doc_data) -> "PatientConsultHistoryDocumentSummary":  # type: ignore[name-defined]
+    from app.schemas.schemas import PatientConsultHistoryDocumentSummary  # noqa: PLC0415
+
+    return PatientConsultHistoryDocumentSummary(
+        id=doc_data.id,
+        document_type=doc_data.document_type,
+        status=doc_data.status,
+        created_at=doc_data.created_at,
+        file_url=doc_data.file_url,
+        summary=doc_data.summary,
+    )
