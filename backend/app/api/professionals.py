@@ -34,6 +34,11 @@ from app.schemas.schemas import (
     PaymentResponse,
     PresenceResponse,
     PrescriptionCreate,
+    ProfessionalConsultHistoryDocumentSummary,
+    ProfessionalConsultHistoryItem,
+    ProfessionalConsultHistoryResponse,
+    ProfessionalConsultPaymentSummary,
+    ProfessionalConsultPayoutSummary,
     ProfessionalFinancialSummaryResponse,
     ProfessionalFinancialTransactionItem,
     ProfessionalFinancialTransactionsResponse,
@@ -53,6 +58,10 @@ from app.services.professional_financials import (
     FinancialStatus,
     get_professional_financial_summary,
     list_professional_transactions,
+)
+from app.services.professional_history import (
+    get_professional_consult_detail,
+    list_professional_consult_history,
 )
 
 router = APIRouter(prefix="/professionals", tags=["professionals"])
@@ -704,3 +713,144 @@ async def sign_document(
       records ``signed_at``, generates a PDF and stores its URL in ``file_url``.
     """
     return await sign_medical_document(db, document_id, current_user)
+
+
+# ── F6 Part 2 – Professional consult history ─────────────────────────────────
+
+
+@router.get(
+    "/me/history/consults",
+    response_model=ProfessionalConsultHistoryResponse,
+    summary="Professional consult history (paginated)",
+)
+async def get_professional_history(
+    from_date: datetime | None = Query(default=None, description="Filter consults created on/after this date"),
+    to_date: datetime | None = Query(default=None, description="Filter consults created on/before this date"),
+    consult_status: str | None = Query(default=None, description="Filter by consult status"),
+    payment_status: str | None = Query(default=None, description="Filter by financial status (pending/paid/refund_pending/refunded/canceled)"),
+    has_payout: bool | None = Query(default=None, description="Filter by payout presence"),
+    patient_name: str | None = Query(default=None, description="Case-insensitive substring filter on patient name"),
+    page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+    limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ProfessionalConsultHistoryResponse:
+    """Return the authenticated professional's paginated consult history.
+
+    Each item aggregates consult info, patient name, payment summary (with
+    payout details), and associated medical documents.  Only read operations
+    are performed.
+    """
+    parsed_consult_status: ConsultRequestStatus | None = None
+    if consult_status is not None:
+        try:
+            parsed_consult_status = ConsultRequestStatus(consult_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid consult_status '{consult_status}'",
+            )
+
+    parsed_payment_status: FinancialStatus | None = None
+    if payment_status is not None:
+        try:
+            parsed_payment_status = FinancialStatus(payment_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid payment_status '{payment_status}'",
+            )
+
+    page_result = await list_professional_consult_history(
+        professional_user_id=current_user.id,
+        db=db,
+        from_date=from_date,
+        to_date=to_date,
+        consult_status=parsed_consult_status,
+        payment_status=parsed_payment_status,
+        has_payout=has_payout,
+        patient_name=patient_name,
+        page=page,
+        limit=limit,
+    )
+
+    items = [_map_pro_history_item(item) for item in page_result.items]
+
+    return ProfessionalConsultHistoryResponse(
+        items=items,
+        total=page_result.total,
+        page=page_result.page,
+        limit=page_result.limit,
+    )
+
+
+@router.get(
+    "/me/history/consults/{consult_id}",
+    response_model=ProfessionalConsultHistoryItem,
+    summary="Get a single consult history item (professional)",
+)
+async def get_professional_history_detail(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_professional_dep),
+    db: AsyncSession = Depends(get_db),
+) -> ProfessionalConsultHistoryItem:
+    """Return the history detail for a single consult belonging to the professional.
+
+    Returns 404 (not 403) when the consult belongs to a different professional,
+    to avoid leaking existence of other professionals' consults.
+    """
+    item = await get_professional_consult_detail(
+        professional_user_id=current_user.id,
+        consult_id=consult_id,
+        db=db,
+    )
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Consult request not found",
+        )
+    return _map_pro_history_item(item)
+
+
+# ── Private mapping helpers ───────────────────────────────────────────────────
+
+
+def _map_pro_history_item(item) -> ProfessionalConsultHistoryItem:  # type: ignore[return]
+    payment = None
+    if item.payment is not None:
+        payment = ProfessionalConsultPaymentSummary(
+            status=item.payment.status,
+            financial_status=item.payment.financial_status.value,
+            amount_total_cents=item.payment.amount_total_cents,
+            professional_amount_cents=item.payment.professional_amount_cents,
+            platform_fee_cents=item.payment.platform_fee_cents,
+            refunded_amount_cents=item.payment.refunded_amount_cents,
+        )
+    payout = None
+    if item.payout is not None:
+        payout = ProfessionalConsultPayoutSummary(
+            payout_id=item.payout.payout_id,
+            paid_out_at=item.payout.paid_out_at,
+        )
+    documents = [
+        ProfessionalConsultHistoryDocumentSummary(
+            id=d.id,
+            document_type=d.document_type,
+            status=d.status,
+            created_at=d.created_at,
+            file_url=d.file_url,
+            summary=d.summary,
+        )
+        for d in item.documents
+    ]
+    return ProfessionalConsultHistoryItem(
+        consult_id=item.consult_id,
+        created_at=item.created_at,
+        scheduled_at=item.scheduled_at,
+        status=item.status,
+        specialty_id=item.specialty_id,
+        patient_name=item.patient_name,
+        payment=payment,
+        payout=payout,
+        documents=documents,
+    )
