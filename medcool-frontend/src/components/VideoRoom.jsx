@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import axios from 'axios'
 import Video from 'twilio-video'
 import {
   ChevronLeft,
@@ -11,8 +10,7 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react'
-
-const API = 'http://localhost:8000'
+import api from '../api'
 
 export default function VideoRoom({ consult, user, token, onBack }) {
   const [sessionStatus, setSessionStatus] = useState('idle') // idle | loading | connected | ended | error
@@ -51,17 +49,15 @@ export default function VideoRoom({ consult, user, token, onBack }) {
       let accessToken, roomId
 
       if (isProfessional) {
-        const res = await axios.post(
-          `${API}/professionals/me/consult-requests/${consult.id}/video-session`,
+        const res = await api.post(
+          `/professionals/me/consult-requests/${consult.id}/video-session`,
           {},
-          { headers: { Authorization: `Bearer ${token}` } },
         )
         accessToken = res.data.access_token
         roomId = res.data.room_id
       } else {
-        const res = await axios.get(
-          `${API}/patients/me/consult-requests/${consult.id}/video-session`,
-          { headers: { Authorization: `Bearer ${token}` } },
+        const res = await api.get(
+          `/patients/me/consult-requests/${consult.id}/video-session`,
         )
         accessToken = res.data.access_token
         roomId = res.data.room_id

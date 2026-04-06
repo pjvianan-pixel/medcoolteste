@@ -1,8 +1,6 @@
 import { useState } from 'react'
-import axios from 'axios'
+import api from '../api'
 import { CreditCard, Loader2, AlertCircle, CheckCircle, ExternalLink } from 'lucide-react'
-
-const API = 'http://localhost:8000'
 
 export default function PaymentButton({ consult, token, onPaymentDone }) {
   const [status, setStatus] = useState('idle') // idle | loading | success | error
@@ -13,10 +11,9 @@ export default function PaymentButton({ consult, token, onPaymentDone }) {
     setStatus('loading')
     setErrorMsg('')
     try {
-      const res = await axios.post(
-        `${API}/patients/me/consult-requests/${consult.id}/payments`,
+      const res = await api.post(
+        `/patients/me/consult-requests/${consult.id}/payments`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } },
       )
       setPaymentData(res.data)
       setStatus('success')

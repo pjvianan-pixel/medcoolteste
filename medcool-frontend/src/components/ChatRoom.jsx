@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import axios from 'axios'
 import { ChevronLeft, Send, Loader2, AlertCircle } from 'lucide-react'
-
-const API = 'http://localhost:8000'
+import api from '../api'
 
 export default function ChatRoom({ consult, user, token, onBack }) {
   const [messages, setMessages] = useState([])
@@ -18,13 +16,11 @@ export default function ChatRoom({ consult, user, token, onBack }) {
   useEffect(() => {
     const endpoint =
       user.role === 'professional'
-        ? `${API}/professionals/me/consult-requests/${consult.id}/messages`
-        : `${API}/patients/me/consult-requests/${consult.id}/messages`
+        ? `/professionals/me/consult-requests/${consult.id}/messages`
+        : `/patients/me/consult-requests/${consult.id}/messages`
 
-    axios
-      .get(endpoint, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+    api
+      .get(endpoint)
       .then((res) => {
         const msgs = res.data?.messages ?? res.data ?? []
         setMessages(Array.isArray(msgs) ? msgs : [])

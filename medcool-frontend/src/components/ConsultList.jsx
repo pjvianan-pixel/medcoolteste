@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
+import api from '../api'
 import { MessageCircle, Video, CreditCard, Loader2, AlertCircle } from 'lucide-react'
-
-const API = 'http://localhost:8000'
 
 const STATUS_LABELS = {
   queued: 'Na fila',
@@ -37,7 +36,7 @@ function formatDate(dateStr) {
   })
 }
 
-export default function ConsultList({ user, token, onSelectConsult }) {
+export default function ConsultList({ user, token }) {
   const [consults, setConsults] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -52,11 +51,9 @@ export default function ConsultList({ user, token, onSelectConsult }) {
     try {
       const endpoint =
         user.role === 'professional'
-          ? `${API}/professionals/me/history`
-          : `${API}/patients/me/history`
-      const res = await axios.get(endpoint, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+          ? '/professionals/me/history'
+          : '/patients/me/history'
+      const res = await api.get(endpoint)
       setConsults(Array.isArray(res.data) ? res.data : res.data.items ?? [])
     } catch (err) {
       setError(
@@ -117,7 +114,6 @@ export default function ConsultList({ user, token, onSelectConsult }) {
               key={consult.id}
               consult={consult}
               role={user.role}
-              onSelect={onSelectConsult}
             />
           ))}
         </ul>
@@ -126,7 +122,8 @@ export default function ConsultList({ user, token, onSelectConsult }) {
   )
 }
 
-function ConsultCard({ consult, role, onSelect }) {
+function ConsultCard({ consult, role }) {
+  const navigate = useNavigate()
   const { status } = consult
   const badgeClass =
     STATUS_COLORS[status] || 'bg-gray-100 text-gray-600 border-gray-200'
@@ -163,7 +160,7 @@ function ConsultCard({ consult, role, onSelect }) {
         <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-100">
           {canChat && (
             <button
-              onClick={() => onSelect(consult, 'chat')}
+              onClick={() => navigate(`/chat/${consult.id}`, { state: { consult } })}
               className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-medium transition-colors"
             >
               <MessageCircle size={15} />
@@ -172,7 +169,7 @@ function ConsultCard({ consult, role, onSelect }) {
           )}
           {canVideo && (
             <button
-              onClick={() => onSelect(consult, 'video')}
+              onClick={() => navigate(`/video/${consult.id}`, { state: { consult } })}
               className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg font-medium transition-colors"
             >
               <Video size={15} />
@@ -181,7 +178,7 @@ function ConsultCard({ consult, role, onSelect }) {
           )}
           {canPay && (
             <button
-              onClick={() => onSelect(consult, 'payment')}
+              onClick={() => navigate(`/payment/${consult.id}`, { state: { consult } })}
               className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg font-medium transition-colors"
             >
               <CreditCard size={15} />

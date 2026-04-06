@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import api from '../api'
 import { Activity, Loader2 } from 'lucide-react'
 
-const API = 'http://localhost:8000'
-
-export default function Login({ onLogin }) {
+export default function Login() {
+  const { login } = useAuth()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -15,13 +17,12 @@ export default function Login({ onLogin }) {
     setError('')
     setLoading(true)
     try {
-      const res = await axios.post(`${API}/auth/login`, { email, password })
+      const res = await api.post('/auth/login', { email, password })
       const { access_token } = res.data
       localStorage.setItem('medcool_token', access_token)
-      const meRes = await axios.get(`${API}/auth/me`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      })
-      onLogin(access_token, meRes.data)
+      const meRes = await api.get('/auth/me')
+      login(access_token, meRes.data)
+      navigate('/dashboard', { replace: true })
     } catch (err) {
       const msg =
         err?.response?.data?.detail ||
