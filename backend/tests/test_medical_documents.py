@@ -408,3 +408,283 @@ async def test_cannot_create_document_for_cancelled_consult(
         headers=_auth(token),
     )
     assert resp.status_code == 422
+
+
+# ── Tests: F5 Part 2 – signing ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_sign_prescription_success(client: AsyncClient, setup):
+    """Professional can sign a DRAFT prescription; status becomes SIGNED."""
+    token = setup["token"]
+    consult_id = setup["cr"].id
+
+    # Create a prescription first.
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/prescriptions",
+        json={"items": [{"drug_name": "Amoxicilina", "dosage": "500mg", "instructions": "8/8h"}]},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    doc_id = resp.json()["id"]
+    assert resp.json()["status"] == "DRAFT"
+
+    # Sign the document.
+    resp = await client.post(f"/professionals/me/documents/{doc_id}/sign", headers=_auth(token))
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["status"] == "SIGNED"
+    assert data["signature_type"] == "SIMPLE"
+    assert data["signed_at"] is not None
+    assert data["file_url"] is not None
+    assert data["file_url"].startswith("/static/documents/")
+    assert data["file_url"].endswith(".pdf")
+
+
+@pytest.mark.asyncio
+async def test_sign_exam_request_success(client: AsyncClient, setup):
+    """Professional can sign a DRAFT exam request; status becomes SIGNED."""
+    token = setup["token"]
+    consult_id = setup["cr"].id
+
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/exam-requests",
+        json={"items": [{"exam_name": "Hemograma", "type": "LAB"}]},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    doc_id = resp.json()["id"]
+
+    resp = await client.post(f"/professionals/me/documents/{doc_id}/sign", headers=_auth(token))
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["status"] == "SIGNED"
+    assert data["signature_type"] == "SIMPLE"
+    assert data["file_url"] is not None
+
+
+@pytest.mark.asyncio
+async def test_sign_nonexistent_document_returns_404(client: AsyncClient, setup):
+    """Signing a non-existent document returns 404."""
+    fake_id = uuid.uuid4()
+    resp = await client.post(
+        f"/professionals/me/documents/{fake_id}/sign", headers=_auth(setup["token"])
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_sign_other_professionals_document_returns_403(
+    client: AsyncClient, db_session: AsyncSession, setup
+):
+    """A professional cannot sign a document that belongs to another professional."""
+    token = setup["token"]
+    consult_id = setup["cr"].id
+
+    # Original professional creates a prescription.
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/prescriptions",
+        json={"items": [{"drug_name": "X", "dosage": "1mg", "instructions": "once"}]},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    doc_id = resp.json()["id"]
+
+    # A different professional tries to sign it.
+    spec = await _seed_specialty(db_session, slug="other-sign-test")
+    await _seed_professional(db_session, "other_sign@doc.com", spec.id)
+    resp = await client.post("/auth/login", json={"email": "other_sign@doc.com", "password": "pw"})
+    other_token = resp.json()["access_token"]
+
+    resp = await client.post(
+        f"/professionals/me/documents/{doc_id}/sign", headers=_auth(other_token)
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_sign_already_signed_document_returns_422(client: AsyncClient, setup):
+    """Signing a document that is already SIGNED returns 422."""
+    token = setup["token"]
+    consult_id = setup["cr"].id
+
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/prescriptions",
+        json={"items": [{"drug_name": "Dipirona", "dosage": "500mg", "instructions": "se dor"}]},
+        headers=_auth(token),
+    )
+    doc_id = resp.json()["id"]
+
+    # First sign – should succeed.
+    resp = await client.post(f"/professionals/me/documents/{doc_id}/sign", headers=_auth(token))
+    assert resp.status_code == 200
+
+    # Second sign – should fail.
+    resp = await client.post(f"/professionals/me/documents/{doc_id}/sign", headers=_auth(token))
+    assert resp.status_code == 422
+
+
+# ── Tests: F5 Part 2 – patient document access ────────────────────────────────
+
+
+@pytest.fixture
+async def patient_token(client: AsyncClient, setup) -> str:
+    """Return a JWT for the patient created in the setup fixture."""
+    resp = await client.post("/auth/login", json={"email": "patient@doc.com", "password": "pw"})
+    assert resp.status_code == 200
+    return resp.json()["access_token"]
+
+
+@pytest.mark.asyncio
+async def test_patient_can_list_signed_documents(
+    client: AsyncClient, setup, patient_token: str
+):
+    """Patient can list SIGNED documents for their own consult."""
+    pro_token = setup["token"]
+    consult_id = setup["cr"].id
+
+    # Professional creates and signs a prescription.
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/prescriptions",
+        json={"items": [{"drug_name": "Amoxicilina", "dosage": "500mg", "instructions": "8/8h"}]},
+        headers=_auth(pro_token),
+    )
+    doc_id = resp.json()["id"]
+    await client.post(f"/professionals/me/documents/{doc_id}/sign", headers=_auth(pro_token))
+
+    # Patient lists documents.
+    resp = await client.get(
+        f"/patients/me/consult-requests/{consult_id}/documents",
+        headers=_auth(patient_token),
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert isinstance(data, list)
+    assert len(data) == 1
+    assert data[0]["status"] == "SIGNED"
+    assert data[0]["file_url"] is not None
+
+
+@pytest.mark.asyncio
+async def test_patient_cannot_see_draft_documents(
+    client: AsyncClient, setup, patient_token: str
+):
+    """Patient does not see DRAFT documents; only signed ones are returned."""
+    pro_token = setup["token"]
+    consult_id = setup["cr"].id
+
+    # Create a prescription but do NOT sign it.
+    await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/prescriptions",
+        json={"items": [{"drug_name": "X", "dosage": "1mg", "instructions": "once"}]},
+        headers=_auth(pro_token),
+    )
+
+    resp = await client.get(
+        f"/patients/me/consult-requests/{consult_id}/documents",
+        headers=_auth(patient_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_patient_can_get_single_signed_document(
+    client: AsyncClient, setup, patient_token: str
+):
+    """Patient can retrieve a single signed document by its ID."""
+    pro_token = setup["token"]
+    consult_id = setup["cr"].id
+
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/prescriptions",
+        json={"items": [{"drug_name": "Paracetamol", "dosage": "750mg", "instructions": "se dor"}]},
+        headers=_auth(pro_token),
+    )
+    doc_id = resp.json()["id"]
+    await client.post(f"/professionals/me/documents/{doc_id}/sign", headers=_auth(pro_token))
+
+    resp = await client.get(f"/patients/me/documents/{doc_id}", headers=_auth(patient_token))
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["id"] == doc_id
+    assert data["status"] == "SIGNED"
+    assert data["file_url"] is not None
+
+
+@pytest.mark.asyncio
+async def test_patient_cannot_get_draft_document(
+    client: AsyncClient, setup, patient_token: str
+):
+    """Patient gets 404 when trying to access an unsigned (DRAFT) document."""
+    pro_token = setup["token"]
+    consult_id = setup["cr"].id
+
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/prescriptions",
+        json={"items": [{"drug_name": "X", "dosage": "1mg", "instructions": "once"}]},
+        headers=_auth(pro_token),
+    )
+    doc_id = resp.json()["id"]
+
+    # DRAFT document → 404 for patient
+    resp = await client.get(f"/patients/me/documents/{doc_id}", headers=_auth(patient_token))
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patient_cannot_access_another_patients_document(
+    client: AsyncClient, db_session: AsyncSession, setup, patient_token: str
+):
+    """Patient cannot access a document that belongs to a different patient."""
+    pro_token = setup["token"]
+    consult_id = setup["cr"].id
+
+    # Sign a document for the original patient.
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{consult_id}/prescriptions",
+        json={"items": [{"drug_name": "X", "dosage": "1mg", "instructions": "once"}]},
+        headers=_auth(pro_token),
+    )
+    doc_id = resp.json()["id"]
+    await client.post(f"/professionals/me/documents/{doc_id}/sign", headers=_auth(pro_token))
+
+    # A different patient tries to access it.
+    other_patient_token, _ = await _register_and_login(
+        client, "other_patient_access@doc.com", "patient"
+    )
+    resp = await client.get(
+        f"/patients/me/documents/{doc_id}", headers=_auth(other_patient_token)
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patient_cannot_list_documents_of_another_patients_consult(
+    client: AsyncClient, db_session: AsyncSession, setup
+):
+    """Patient cannot list documents for a consult that belongs to another patient."""
+    consult_id = setup["cr"].id
+    other_patient_token, _ = await _register_and_login(
+        client, "other_patient_list@doc.com", "patient"
+    )
+    resp = await client.get(
+        f"/patients/me/consult-requests/{consult_id}/documents",
+        headers=_auth(other_patient_token),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_professional_cannot_use_patient_document_endpoints(
+    client: AsyncClient, setup
+):
+    """Professional role is forbidden from the patient document endpoints."""
+    pro_token = setup["token"]
+    consult_id = setup["cr"].id
+
+    resp = await client.get(
+        f"/patients/me/consult-requests/{consult_id}/documents",
+        headers=_auth(pro_token),
+    )
+    assert resp.status_code == 403

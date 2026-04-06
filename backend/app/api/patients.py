@@ -26,6 +26,7 @@ from app.schemas.schemas import (
     ConsultOfferResponse,
     ConsultRequestCreate,
     ConsultRequestResponse,
+    MedicalDocumentResponse,
     PatientProfileResponse,
     PatientProfileUpdate,
     PaymentResponse,
@@ -34,6 +35,7 @@ from app.schemas.schemas import (
 )
 from app.services.cancellation import cancel_by_patient
 from app.services.matching import run_matching
+from app.services.medical_documents import get_document_for_patient, list_documents_for_patient
 from app.services.payments import create_payment_for_consult_request
 from app.services.pricing import calculate_price, get_demand_for_specialty, quote_expires_at
 
@@ -558,3 +560,40 @@ async def get_payment(
             status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found"
         )
     return payment
+
+
+# ── F5 Part 2 – Patient document access ──────────────────────────────────────
+
+
+@router.get(
+    "/me/consult-requests/{consult_id}/documents",
+    response_model=list[MedicalDocumentResponse],
+    summary="List signed documents for a consult (patient)",
+)
+async def list_patient_consult_documents(
+    consult_id: uuid.UUID,
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> list[MedicalDocumentResponse]:
+    """Return all SIGNED medical documents for a consult belonging to the patient.
+
+    Only signed documents are exposed; drafts are not visible to patients.
+    """
+    return await list_documents_for_patient(db, consult_id, current_user)
+
+
+@router.get(
+    "/me/documents/{document_id}",
+    response_model=MedicalDocumentResponse,
+    summary="Get a specific signed document (patient)",
+)
+async def get_patient_document(
+    document_id: uuid.UUID,
+    current_user: User = Depends(_patient_dep),
+    db: AsyncSession = Depends(get_db),
+) -> MedicalDocumentResponse:
+    """Return a single SIGNED medical document accessible to the authenticated patient.
+
+    Use ``file_url`` in the response to download the generated PDF.
+    """
+    return await get_document_for_patient(db, document_id, current_user)
