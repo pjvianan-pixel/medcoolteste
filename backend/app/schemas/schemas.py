@@ -440,3 +440,52 @@ class MedicalDocumentResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
+
+# ── Patient History (F6 Part 1) ───────────────────────────────────────────────
+
+
+class PatientConsultHistoryDocumentSummary(BaseModel):
+    """Reduced document view for the patient history endpoint."""
+
+    id: uuid.UUID
+    document_type: DocumentType
+    status: DocumentStatus
+    created_at: datetime
+    file_url: str | None
+    """Only populated for SIGNED documents."""
+    summary: str
+
+
+class PatientConsultPaymentSummary(BaseModel):
+    """Reduced payment view for the patient history endpoint."""
+
+    status: PaymentStatus
+    amount_total_cents: int
+    refunded_amount_cents: int
+    method: str | None
+    """Payment method (e.g. 'credit_card', 'pix'); reserved for future use."""
+
+
+class PatientConsultHistoryItem(BaseModel):
+    """Aggregated history item for one consult request."""
+
+    consult_id: uuid.UUID
+    created_at: datetime
+    scheduled_at: datetime | None
+    status: ConsultRequestStatus
+    specialty_id: uuid.UUID
+    professional_name: str | None
+    professional_specialty: str | None
+    professional_crm: str | None
+    payment: PatientConsultPaymentSummary | None
+    documents: list[PatientConsultHistoryDocumentSummary]
+
+
+class PatientConsultHistoryResponse(BaseModel):
+    """Paginated response for the patient history endpoint."""
+
+    items: list[PatientConsultHistoryItem]
+    total: int
+    page: int
+    limit: int
