@@ -925,12 +925,14 @@ async def professional_create_video_session(
     a session already exists, HTTP 422 if the consult is not in ``matched``
     status.
     """
-    session = await create_video_session(
+    session, access_token = await create_video_session(
         db=db,
         consult_request_id=consult_id,
         professional_user_id=current_user.id,
     )
-    return VideoSessionResponse.model_validate(session)
+    response = VideoSessionResponse.model_validate(session)
+    response.access_token = access_token
+    return response
 
 
 @router.get(
@@ -947,7 +949,7 @@ async def professional_get_video_session(
 
     Returns HTTP 404 if no session exists yet.
     """
-    session = await get_video_session(
+    session, access_token = await get_video_session(
         db=db,
         consult_request_id=consult_id,
         user_id=current_user.id,
@@ -957,7 +959,9 @@ async def professional_get_video_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No video session found for this consult request",
         )
-    return VideoSessionResponse.model_validate(session)
+    response = VideoSessionResponse.model_validate(session)
+    response.access_token = access_token
+    return response
 
 
 @router.post(
