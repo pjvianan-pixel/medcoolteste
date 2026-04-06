@@ -60,6 +60,7 @@ from app.services.professional_financials import (
     list_professional_transactions,
 )
 from app.services.professional_history import (
+    ProfessionalConsultHistoryItem as _ProHistoryItem,
     get_professional_consult_detail,
     list_professional_consult_history,
 )
@@ -815,7 +816,7 @@ async def get_professional_history_detail(
 # ── Private mapping helpers ───────────────────────────────────────────────────
 
 
-def _map_pro_history_item(item) -> ProfessionalConsultHistoryItem:  # type: ignore[return]
+def _map_pro_history_item(item: _ProHistoryItem) -> ProfessionalConsultHistoryItem:
     payment = None
     if item.payment is not None:
         payment = ProfessionalConsultPaymentSummary(

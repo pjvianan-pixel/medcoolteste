@@ -10,7 +10,7 @@ Design decisions
   professional's perspective: ConsultRequest.matched_professional_user_id is
   the authorization boundary.
 
-* Two-query strategy (same as F6 Part 1):
+* Five-query batch strategy:
   1. Fetch matching ConsultRequests in one query.
   2. Batch-fetch Payments, ProfessionalPayouts, PatientProfiles and
      MedicalDocuments in separate queries keyed by consult_request_id /
