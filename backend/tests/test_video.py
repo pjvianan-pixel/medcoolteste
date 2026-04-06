@@ -148,7 +148,7 @@ async def test_create_video_session_professional(db_session: AsyncSession):
     professional = await _seed_professional(db_session, "d1@video.com", spec.id)
     cr = await _create_consult(db_session, patient.id, spec.id, professional.id)
 
-    session = await create_video_session(
+    session, access_token = await create_video_session(
         db=db_session,
         consult_request_id=cr.id,
         professional_user_id=professional.id,
@@ -161,6 +161,7 @@ async def test_create_video_session_professional(db_session: AsyncSession):
     assert session.room_id == f"medcool-consult-{cr.id}"
     assert session.started_at is None
     assert session.ended_at is None
+    assert access_token.startswith("stub-jwt-")
 
 
 @pytest.mark.asyncio
@@ -240,7 +241,7 @@ async def test_get_video_session_returns_none_when_missing(db_session: AsyncSess
     professional = await _seed_professional(db_session, "d6@video.com", spec.id)
     cr = await _create_consult(db_session, patient.id, spec.id, professional.id)
 
-    result = await get_video_session(
+    result, _ = await get_video_session(
         db=db_session,
         consult_request_id=cr.id,
         user_id=patient.id,
@@ -261,13 +262,14 @@ async def test_get_video_session_as_patient(db_session: AsyncSession):
         consult_request_id=cr.id,
         professional_user_id=professional.id,
     )
-    result = await get_video_session(
+    result, token = await get_video_session(
         db=db_session,
         consult_request_id=cr.id,
         user_id=patient.id,
     )
     assert result is not None
     assert result.status == VideoSessionStatus.READY
+    assert token is not None
 
 
 @pytest.mark.asyncio
@@ -715,3 +717,199 @@ async def test_video_ws_unknown_event_type(db_session: AsyncSession):
     finally:
         app.dependency_overrides.clear()
         video_ws_module._ws_session_factory = video_ws_module.AsyncSessionLocal
+
+
+# ── Twilio mock tests (F3 Part 3) ─────────────────────────────────────────────
+
+
+def test_twilio_create_video_room_stub():
+    """create_video_room returns stub values when Twilio credentials are absent."""
+    import app.services.twilio_video as tv_module
+
+    consult_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+
+    # Ensure credentials are not set for this test.
+    original = (
+        tv_module.settings.TWILIO_ACCOUNT_SID,
+        tv_module.settings.TWILIO_API_KEY,
+        tv_module.settings.TWILIO_API_SECRET,
+    )
+    tv_module.settings.TWILIO_ACCOUNT_SID = None
+    tv_module.settings.TWILIO_API_KEY = None
+    tv_module.settings.TWILIO_API_SECRET = None
+    try:
+        info = tv_module.create_video_room(consult_id, user_id)
+        assert info.room_id == f"medcool-consult-{consult_id}"
+        assert info.room_url == f"https://video.twilio.com/rooms/medcool-consult-{consult_id}"
+        assert info.token.startswith("stub-jwt-")
+        assert str(user_id) in info.token
+    finally:
+        tv_module.settings.TWILIO_ACCOUNT_SID = original[0]
+        tv_module.settings.TWILIO_API_KEY = original[1]
+        tv_module.settings.TWILIO_API_SECRET = original[2]
+
+
+def test_twilio_generate_access_token_stub():
+    """generate_access_token returns a stub token when credentials are absent."""
+    import app.services.twilio_video as tv_module
+
+    user_id = uuid.uuid4()
+    room_name = "medcool-consult-test"
+
+    original = (
+        tv_module.settings.TWILIO_ACCOUNT_SID,
+        tv_module.settings.TWILIO_API_KEY,
+        tv_module.settings.TWILIO_API_SECRET,
+    )
+    tv_module.settings.TWILIO_ACCOUNT_SID = None
+    tv_module.settings.TWILIO_API_KEY = None
+    tv_module.settings.TWILIO_API_SECRET = None
+    try:
+        token = tv_module.generate_access_token(user_id, room_name)
+        assert token.startswith("stub-jwt-")
+        assert str(user_id) in token
+        assert room_name in token
+    finally:
+        tv_module.settings.TWILIO_ACCOUNT_SID = original[0]
+        tv_module.settings.TWILIO_API_KEY = original[1]
+        tv_module.settings.TWILIO_API_SECRET = original[2]
+
+
+def test_twilio_create_video_room_real_sdk():
+    """create_video_room calls real Twilio SDK when credentials are configured."""
+    from unittest.mock import MagicMock, patch
+
+    import app.services.twilio_video as tv_module
+
+    consult_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    fake_sid = "RM" + "a" * 32
+    fake_jwt = "eyJ.fake.jwt"
+
+    original = (
+        tv_module.settings.TWILIO_ACCOUNT_SID,
+        tv_module.settings.TWILIO_API_KEY,
+        tv_module.settings.TWILIO_API_SECRET,
+    )
+    tv_module.settings.TWILIO_ACCOUNT_SID = "ACfakeaccountsid"
+    tv_module.settings.TWILIO_API_KEY = "SKfakeapikey"
+    tv_module.settings.TWILIO_API_SECRET = "fakesecret"
+    try:
+        mock_room = MagicMock()
+        mock_room.sid = fake_sid
+        mock_client = MagicMock()
+        mock_client.video.rooms.create.return_value = mock_room
+
+        mock_token_instance = MagicMock()
+        mock_token_instance.to_jwt.return_value = fake_jwt
+
+        with (
+            patch("twilio.rest.Client", return_value=mock_client),
+            patch(
+                "twilio.jwt.access_token.AccessToken",
+                return_value=mock_token_instance,
+            ),
+            patch("twilio.jwt.access_token.grants.VideoGrant"),
+        ):
+            info = tv_module.create_video_room(consult_id, user_id)
+
+        expected_room_name = f"medcool-consult-{consult_id}"
+        mock_client.video.rooms.create.assert_called_once_with(
+            unique_name=expected_room_name
+        )
+        assert info.room_id == fake_sid
+        assert fake_sid in info.room_url
+        assert info.token == fake_jwt
+    finally:
+        tv_module.settings.TWILIO_ACCOUNT_SID = original[0]
+        tv_module.settings.TWILIO_API_KEY = original[1]
+        tv_module.settings.TWILIO_API_SECRET = original[2]
+
+
+def test_twilio_generate_access_token_real_sdk():
+    """generate_access_token calls real Twilio SDK when credentials are configured."""
+    from unittest.mock import MagicMock, patch
+
+    import app.services.twilio_video as tv_module
+
+    user_id = uuid.uuid4()
+    room_name = "medcool-consult-test-room"
+    fake_jwt = "eyJ.real.jwt"
+
+    original = (
+        tv_module.settings.TWILIO_ACCOUNT_SID,
+        tv_module.settings.TWILIO_API_KEY,
+        tv_module.settings.TWILIO_API_SECRET,
+    )
+    tv_module.settings.TWILIO_ACCOUNT_SID = "ACfakeaccountsid"
+    tv_module.settings.TWILIO_API_KEY = "SKfakeapikey"
+    tv_module.settings.TWILIO_API_SECRET = "fakesecret"
+    try:
+        mock_token_instance = MagicMock()
+        mock_token_instance.to_jwt.return_value = fake_jwt
+
+        with (
+            patch(
+                "twilio.jwt.access_token.AccessToken",
+                return_value=mock_token_instance,
+            ),
+            patch("twilio.jwt.access_token.grants.VideoGrant") as mock_grant_cls,
+        ):
+            token = tv_module.generate_access_token(user_id, room_name)
+
+        mock_grant_cls.assert_called_once_with(room=room_name)
+        mock_token_instance.add_grant.assert_called_once()
+        assert token == fake_jwt
+    finally:
+        tv_module.settings.TWILIO_ACCOUNT_SID = original[0]
+        tv_module.settings.TWILIO_API_KEY = original[1]
+        tv_module.settings.TWILIO_API_SECRET = original[2]
+
+
+@pytest.mark.asyncio
+async def test_rest_create_video_session_returns_access_token(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """POST /professionals/.../video-session response includes access_token."""
+    spec = await _seed_specialty(db_session, "twilio-tok")
+    patient, _ = await _seed_patient(db_session, "twilio_p1@video.com")
+    professional = await _seed_professional(db_session, "twilio_d1@video.com", spec.id)
+    cr = await _create_consult(db_session, patient.id, spec.id, professional.id)
+
+    token = create_access_token(str(professional.id))
+    resp = await client.post(
+        f"/professionals/me/consult-requests/{cr.id}/video-session",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert "access_token" in data
+    assert data["access_token"] is not None
+
+
+@pytest.mark.asyncio
+async def test_rest_get_video_session_returns_access_token(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """GET /patients/.../video-session response includes access_token."""
+    spec = await _seed_specialty(db_session, "twilio-get-tok")
+    patient, _ = await _seed_patient(db_session, "twilio_p2@video.com")
+    professional = await _seed_professional(db_session, "twilio_d2@video.com", spec.id)
+    cr = await _create_consult(db_session, patient.id, spec.id, professional.id)
+
+    pro_token = create_access_token(str(professional.id))
+    pat_token = create_access_token(str(patient.id))
+
+    await client.post(
+        f"/professionals/me/consult-requests/{cr.id}/video-session",
+        headers=_auth(pro_token),
+    )
+    resp = await client.get(
+        f"/patients/me/consult-requests/{cr.id}/video-session",
+        headers=_auth(pat_token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "access_token" in data
+    assert data["access_token"] is not None
