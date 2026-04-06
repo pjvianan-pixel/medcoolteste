@@ -605,5 +605,6 @@ class VideoSessionResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None
     ended_at: datetime | None
+    access_token: str | None = None
 
     model_config = {"from_attributes": True}
