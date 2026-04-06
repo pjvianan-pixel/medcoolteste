@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.consult_request import ConsultRequest, ConsultRequestStatus
 from app.db.models.video_session import VideoSession, VideoSessionStatus
-from app.services.twilio_video import create_video_room, delete_video_room
+from app.services.twilio_video import create_video_room, delete_video_room, generate_access_token
 
 _VIDEO_ALLOWED_STATUSES = frozenset(
     {
@@ -62,11 +62,14 @@ async def create_video_session(
     db: AsyncSession,
     consult_request_id: uuid.UUID,
     professional_user_id: uuid.UUID,
-) -> VideoSession:
+) -> tuple["VideoSession", str]:
     """Provision a new VideoSession for a ConsultRequest.
 
     Only the matched professional may call this endpoint.  Raises HTTP 409 if a
     session already exists, HTTP 422 if the consult is not in an allowed status.
+
+    Returns a ``(VideoSession, access_token)`` tuple where *access_token* is a
+    Twilio JWT for the professional who created the session.
     """
     result = await db.execute(
         select(ConsultRequest).where(ConsultRequest.id == consult_request_id)
@@ -103,8 +106,8 @@ async def create_video_session(
             detail="A video session already exists for this consult request",
         )
 
-    # Provision the room via Twilio (stub).
-    room_info = create_video_room(consult_request_id)
+    # Provision the room via Twilio (real SDK or stub fallback).
+    room_info = create_video_room(consult_request_id, professional_user_id)
 
     session = VideoSession(
         id=uuid.uuid4(),
@@ -116,24 +119,29 @@ async def create_video_session(
     db.add(session)
     await db.commit()
     await db.refresh(session)
-    return session
+    return session, room_info.token
 
 
 async def get_video_session(
     db: AsyncSession,
     consult_request_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> VideoSession | None:
-    """Return the VideoSession for *consult_request_id*, or ``None`` if none exists.
+) -> tuple[VideoSession, str] | tuple[None, None]:
+    """Return the VideoSession for *consult_request_id* and a fresh access token.
 
     Verifies the caller is a participant; raises HTTP 403/404 otherwise.
+    Returns ``(None, None)`` when no session exists yet.
     """
     await _load_consult_and_authorise(db, consult_request_id, user_id)
 
     result = await db.execute(
         select(VideoSession).where(VideoSession.consult_request_id == consult_request_id)
     )
-    return result.scalar_one_or_none()
+    session = result.scalar_one_or_none()
+    if session is None:
+        return None, None
+    token = generate_access_token(user_id, session.room_id)
+    return session, token
 
 
 async def end_video_session(
