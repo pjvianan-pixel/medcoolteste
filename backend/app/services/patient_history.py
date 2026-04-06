@@ -67,7 +67,7 @@ class PatientConsultHistoryItem:
     created_at: datetime
     scheduled_at: datetime | None
     status: ConsultRequestStatus
-    specialty: str
+    specialty_id: uuid.UUID
     professional_name: str | None
     professional_specialty: str | None
     professional_crm: str | None
@@ -129,7 +129,7 @@ def _assemble_item(
         created_at=consult.created_at,
         scheduled_at=consult.scheduled_at,
         status=consult.status,
-        specialty=str(consult.specialty_id),  # specialty_id used as slug fallback
+        specialty_id=consult.specialty_id,
         professional_name=pro_profile.full_name if pro_profile else None,
         professional_specialty=pro_profile.specialty if pro_profile else None,
         professional_crm=pro_profile.crm if pro_profile else None,

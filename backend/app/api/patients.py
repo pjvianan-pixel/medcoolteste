@@ -625,8 +625,6 @@ async def get_patient_history(
     Each item aggregates consult info, payment summary, and associated
     medical documents.  Only read operations are performed.
     """
-    from app.db.models.consult_request import ConsultRequestStatus  # noqa: PLC0415
-
     parsed_status: ConsultRequestStatus | None = None
     if consult_status is not None:
         try:
@@ -654,7 +652,7 @@ async def get_patient_history(
             created_at=item.created_at,
             scheduled_at=item.scheduled_at,
             status=item.status,
-            specialty=item.specialty,
+            specialty_id=item.specialty_id,
             professional_name=item.professional_name,
             professional_specialty=item.professional_specialty,
             professional_crm=item.professional_crm,
@@ -700,7 +698,7 @@ async def get_patient_history_detail(
         created_at=item.created_at,
         scheduled_at=item.scheduled_at,
         status=item.status,
-        specialty=item.specialty,
+        specialty_id=item.specialty_id,
         professional_name=item.professional_name,
         professional_specialty=item.professional_specialty,
         professional_crm=item.professional_crm,

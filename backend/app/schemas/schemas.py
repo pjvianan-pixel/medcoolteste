@@ -474,7 +474,7 @@ class PatientConsultHistoryItem(BaseModel):
     created_at: datetime
     scheduled_at: datetime | None
     status: ConsultRequestStatus
-    specialty: str
+    specialty_id: uuid.UUID
     professional_name: str | None
     professional_specialty: str | None
     professional_crm: str | None
