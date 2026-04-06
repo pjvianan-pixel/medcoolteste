@@ -1,4 +1,5 @@
 from app.db.models.chat_message import ChatMessage
+from app.db.models.video_session import VideoSession, VideoSessionStatus
 from app.db.models.consult_offer import ConsultOffer, ConsultOfferEvent
 from app.db.models.consult_quote import ConsultQuote
 from app.db.models.consult_request import ConsultRequest
@@ -30,4 +31,6 @@ __all__ = [
     "ProfessionalPayout",
     "MedicalDocument",
     "ChatMessage",
+    "VideoSession",
+    "VideoSessionStatus",
 ]

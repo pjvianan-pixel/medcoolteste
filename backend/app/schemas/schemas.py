@@ -12,6 +12,7 @@ from app.db.models.medical_document import DocumentStatus, DocumentSubtype, Docu
 from app.db.models.payment import PaymentStatus
 from app.db.models.professional_profile import VerificationStatus
 from app.db.models.user import UserRole
+from app.db.models.video_session import VideoSessionStatus
 from app.services.professional_financials import FinancialStatus
 
 # ── Auth ────────────────────────────────────────────────────────────────────
@@ -588,3 +589,21 @@ class ChatMessagePageResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+
+# ── Video sessions (F3 Part 2) ────────────────────────────────────────────────
+
+
+class VideoSessionResponse(BaseModel):
+    """Full representation of a provisioned video session."""
+
+    id: uuid.UUID
+    consult_request_id: uuid.UUID
+    room_id: str
+    provider: str
+    status: VideoSessionStatus
+    created_at: datetime
+    started_at: datetime | None
+    ended_at: datetime | None
+
+    model_config = {"from_attributes": True}
