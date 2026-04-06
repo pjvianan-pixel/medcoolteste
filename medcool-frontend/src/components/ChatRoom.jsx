@@ -80,7 +80,10 @@ export default function ChatRoom({ consult, user, token, onBack }) {
     const text = input.trim()
     if (!text || wsStatus !== 'open') return
 
-    const clientMessageId = crypto.randomUUID()
+    const clientMessageId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36)
     wsRef.current.send(
       JSON.stringify({
         type: 'message',

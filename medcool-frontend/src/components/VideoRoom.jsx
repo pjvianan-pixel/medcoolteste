@@ -18,6 +18,7 @@ export default function VideoRoom({ consult, user, token, onBack }) {
   const [sessionStatus, setSessionStatus] = useState('idle') // idle | loading | connected | ended | error
   const [errorMsg, setErrorMsg] = useState('')
   const [room, setRoom] = useState(null)
+  const roomRef = useRef(null)
   const [audioMuted, setAudioMuted] = useState(false)
   const [videoMuted, setVideoMuted] = useState(false)
   const [remoteParticipants, setRemoteParticipants] = useState([])
@@ -35,8 +36,9 @@ export default function VideoRoom({ consult, user, token, onBack }) {
   }, [])
 
   const disconnectRoom = () => {
-    if (room) {
-      room.disconnect()
+    if (roomRef.current) {
+      roomRef.current.disconnect()
+      roomRef.current = null
     }
     localTracksRef.current.forEach((track) => track.stop())
     localTracksRef.current = []
@@ -102,6 +104,7 @@ export default function VideoRoom({ consult, user, token, onBack }) {
       })
 
       setRoom(twilioRoom)
+      roomRef.current = twilioRoom
       setSessionStatus('connected')
 
       // Attach existing remote participants
